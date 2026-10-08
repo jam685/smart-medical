@@ -1,0 +1,112 @@
+/* ============ 主题色覆盖 ============ */
+:root {
+  /* 品牌主色 */
+  --el-color-primary: #1E7AE6;
+  --el-color-primary-light-3: #4D94EC;
+  --el-color-primary-light-5: #7CAEF1;
+  --el-color-primary-light-7: #ABC8F6;
+  --el-color-primary-light-8: #C3D6F9;
+  --el-color-primary-light-9: #DAE4FC;
+  --el-color-primary-dark-2: #1862B8;
+
+  /* 语义色 */
+  --el-color-success: #10B981;
+  --el-color-success-light-3: #3FC79A;
+  --el-color-success-light-5: #6FD5B4;
+  --el-color-success-light-7: #9FE2CD;
+  --el-color-success-light-8: #B7E8DA;
+  --el-color-success-light-9: #CFEFES;
+
+  --el-color-warning: #F59E0B;
+  --el-color-warning-light-3: #F7B13C;
+  --el-color-warning-light-5: #F9C56D;
+  --el-color-warning-light-7: #FBD89D;
+  --el-color-warning-light-8: #FCE1B6;
+  --el-color-warning-light-9: #FDEBCE;
+
+  --el-color-danger: #E53935;
+  --el-color-danger-light-3: #EB605D;
+  --el-color-danger-light-5: #F08785;
+  --el-color-danger-light-7: #F5AFAE;
+  --el-color-danger-light-8: #F8C2C1;
+  --el-color-danger-light-9: #FAD5D5;
+
+  --el-color-info: #6366F1;
+  --el-color-info-light-3: #8284F4;
+  --el-color-info-light-5: #A1A2F6;
+  --el-color-info-light-7: #C1C1F9;
+  --el-color-info-light-8: #D0D1FB;
+  --el-color-info-light-9: #E0E0FC;
+
+  /* AI 专属标识色 */
+  --ai-color: #7A5AF8;
+  --ai-color-light: #B4A3FB;
+  --ai-color-dark: #5A3BD8;
+}
+
+/* ============ 品牌字体 ============ */
+.brand-font {
+  font-family: 'ZCOOL XiaoWei', 'Noto Serif SC', serif;
+  letter-spacing: 2px;
+}
+
+/* ============ 全局重置 ============ */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #F5F7FA;
+  color: #1F2937;
+}
+
+a { text-decoration: none; color: inherit; }
+
+/* ============ 布局通用类 ============ */
+.flex { display: flex; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-1 { flex: 1; min-width: 0; }
+
+.page-container {
+  padding: 20px;
+  height: 100%;
+  overflow: auto;
+}
+
+.page-header {
+  margin-bottom: 16px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* ============ AI 标识 ============ */
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: linear-gradient(135deg, var(--ai-color), var(--ai-color-dark));
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ============ 滚动条 ============ */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+::-webkit-scrollbar-track { background: transparent; }

@@ -1,0 +1,120 @@
+<script setup>
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import AppLogo from '@/components/AppLogo.vue'
+import {
+  Setting,
+  User,
+  Lock,
+  Tickets,
+  Notebook,
+  Cpu,
+  Monitor,
+  Warning,
+  ChatLineRound,
+} from '@element-plus/icons-vue'
+
+const route = useRoute()
+const router = useRouter()
+const userStore = useUserStore()
+
+const activeMenu = computed(() => route.path)
+
+const menus = [
+  { path: '/admin/home', title: '管理首页', icon: Setting },
+  { path: '/admin/users', title: '用户管理', icon: User },
+  { path: '/admin/roles', title: '角色权限', icon: Lock },
+  { path: '/admin/audit-logs', title: '审计日志', icon: Tickets },
+  { path: '/admin/knowledge-base', title: '知识库', icon: Notebook },
+  { path: '/admin/model-configs', title: '模型配置', icon: Cpu },
+  { path: '/admin/data-quality', title: '数据质量', icon: Monitor },
+  { path: '/admin/sensitive-review', title: '敏感审核', icon: Warning },
+  { path: '/admin/online-consults', title: '问诊监控', icon: ChatLineRound },
+]
+
+function handleLogout() {
+  userStore.logout()
+  router.push('/')
+}
+</script>
+
+<template>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">
+        <AppLogo :size="34"/>
+        <span class="brand-font">小林智疗</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="side-menu"
+        router
+        background-color="transparent"
+        text-color="#4B5563"
+        active-text-color="#1E7AE6"
+      >
+        <el-menu-item v-for="m in menus" :key="m.path" :index="m.path">
+          <el-icon><component :is="m.icon" /></el-icon>
+          <span>{{ m.title }}</span>
+        </el-menu-item>
+      </el-menu>
+    </aside>
+
+    <div class="main">
+      <header class="top-bar">
+        <div class="breadcrumb">{{ route.meta.title || '管理中心' }}</div>
+        <div class="user-area">
+          <el-dropdown trigger="click">
+            <span class="user-info">
+              <el-avatar :size="32" :src="userStore.user?.avatar" />
+              <span class="name">{{ userStore.user?.realName }}</span>
+              <el-icon><arrow-down /></el-icon>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+      <main class="content">
+        <router-view />
+      </main>
+    </div>
+  </div>
+</template>
+
+<script>
+import { ArrowDown } from '@element-plus/icons-vue'
+export default { components: { ArrowDown } }
+</script>
+
+<style scoped>
+.layout { display: flex; height: 100vh; }
+.sidebar {
+  width: 240px; flex-shrink: 0;
+  background: #fff; border-right: 1px solid #E5E7EB;
+  display: flex; flex-direction: column;
+}
+.logo {
+  height: 60px; display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; font-size: 16px; font-weight: 600;
+  background: linear-gradient(135deg, #6366F1, #8284F4); color: #fff;
+}
+.logo :deep(.app-logo) { border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+.side-menu { border-right: none; flex: 1; padding: 12px 8px; }
+.side-menu .el-menu-item { border-radius: 6px; margin-bottom: 4px; }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.top-bar {
+  height: 60px; background: #fff; border-bottom: 1px solid #E5E7EB;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+}
+.breadcrumb { font-size: 16px; font-weight: 500; color: #111827; }
+.user-info { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.name { font-size: 14px; color: #374151; }
+.content { flex: 1; overflow: auto; background: #F5F7FA; }
+</style>
