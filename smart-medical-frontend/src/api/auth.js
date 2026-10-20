@@ -15,13 +15,47 @@ export function patientLogin(username, password) {
 }
 
 /**
+ * 患者注册（无需登录）——注册成功自动登录，返回与登录一致的 {token, user}
+ * @param {object} data { username, password, realName, gender, phone, idCard }
+ * @returns {Promise<{token: string, user: object}>}
+ */
+export function patientRegister(data) {
+  return request.post('/patients/register', data)
+}
+
+/**
+ * 患者忘记密码-发送验证码（无需登录）
+ * 通过 用户名 + 身份证号 + 手机号 三要素校验身份后生成验证码。
+ * 演示环境未接短信通道，验证码直接随响应返回（data.code），正式环境应走短信。
+ * @param {string} username 用户名
+ * @param {string} idCard   身份证号
+ * @param {string} phone    手机号
+ * @returns {Promise<{code: string}>} 验证码
+ */
+export function sendPasswordResetCode(username, idCard, phone) {
+  return request.post('/patients/password-reset/code', { username, idCard, phone })
+}
+
+/**
+ * 患者忘记密码-重置密码（无需登录）
+ * 验证码校验通过后写入新密码。
+ * @param {string} username    用户名
+ * @param {string} code        验证码
+ * @param {string} newPassword 新密码（6-64 位）
+ */
+export function resetPassword(username, code, newPassword) {
+  return request.put('/patients/password-reset', { username, code, newPassword })
+}
+
+/**
  * 医生工号/姓名登录
  * @param {string} employeeNo 医生工号（如 D001）或姓名
  * @param {string} password    明文密码（如 123456）
  * @returns {Promise<{token: string, user: object}>} JWT 令牌与用户信息（id/employeeNo/realName/department/onlineStatus/title）
  */
 export function doctorLogin(employeeNo, password) {
-  return request.post('/doctors/login', { employeeNo, password })
+  // 同时传 username，后端支持工号精确匹配 + 姓名模糊匹配（否则姓名登录会走不通）
+  return request.post('/doctors/login', { employeeNo, username: employeeNo, password })
 }
 
 /**

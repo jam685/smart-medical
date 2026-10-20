@@ -180,6 +180,13 @@ public class VisitServiceImpl implements VisitService {
         if (Objects.equals(oldStatus, status)) {
             return; // 幂等：状态未变直接返回
         }
+        // 业务规则：若该就诊关联的挂号单已被取消，禁止医生叫号/接诊/推进流程
+        if (visit.getAppointmentId() != null) {
+            Appointment appt = appointmentMapper.selectById(visit.getAppointmentId());
+            if (appt != null && "CANCELLED".equals(appt.getStatus())) {
+                throw new BizException("该患者已取消挂号，无法继续就诊");
+            }
+        }
 
         // 追加进度节点（CALLING/IN_PROGRESS/FINISHED 各自追加；WAITING 不追加）
         String nodeName = STATUS_TO_NODE.get(status);

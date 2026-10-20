@@ -30,10 +30,8 @@ public class AdminServiceImpl implements AdminService {
     private final PatientMapper patientMapper;
     private final DoctorMapper doctorMapper;
     private final AuditLogMapper auditLogMapper;
-    private final KnowledgeBaseMapper knowledgeBaseMapper;
     private final ModelConfigMapper modelConfigMapper;
     private final DataQualityMapper dataQualityMapper;
-    private final SensitiveContentMapper sensitiveContentMapper;
     private final JwtUtil jwtUtil;
 
     /** 新增用户缺省密码 123456 */
@@ -108,15 +106,23 @@ public class AdminServiceImpl implements AdminService {
     }
 
     @Override
-    public PageResult<?> getUsersByRole(String role, int page, int size) {
+    public PageResult<?> getUsersByRole(String role, int page, int size, String keyword) {
         if (role == null) {
             throw new BizException("role 参数不能为空");
         }
+        String kw = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
         PageResult<?> pr;
         if ("PATIENT".equalsIgnoreCase(role)) {
             Page<Patient> pageParam = new Page<>(page, size);
-            Page<Patient> result = patientMapper.selectPage(pageParam,
-                    new LambdaQueryWrapper<Patient>().orderByDesc(Patient::getId));
+            LambdaQueryWrapper<Patient> wrapper = new LambdaQueryWrapper<>();
+            if (kw != null) {
+                wrapper.and(w -> w.like(Patient::getUsername, kw)
+                        .or().like(Patient::getRealName, kw)
+                        .or().like(Patient::getPhone, kw)
+                        .or().like(Patient::getIdCard, kw));
+            }
+            wrapper.orderByDesc(Patient::getId);
+            Page<Patient> result = patientMapper.selectPage(pageParam, wrapper);
             List<Map<String, Object>> list = new ArrayList<>();
             for (Patient p : result.getRecords()) {
                 Map<String, Object> m = new HashMap<>();
@@ -133,8 +139,15 @@ public class AdminServiceImpl implements AdminService {
             pr = PageResult.of(result.getTotal(), list, page, size);
         } else if ("DOCTOR".equalsIgnoreCase(role)) {
             Page<Doctor> pageParam = new Page<>(page, size);
-            Page<Doctor> result = doctorMapper.selectPage(pageParam,
-                    new LambdaQueryWrapper<Doctor>().orderByDesc(Doctor::getId));
+            LambdaQueryWrapper<Doctor> wrapper = new LambdaQueryWrapper<>();
+            if (kw != null) {
+                wrapper.and(w -> w.like(Doctor::getEmployeeNo, kw)
+                        .or().like(Doctor::getRealName, kw)
+                        .or().like(Doctor::getPhone, kw)
+                        .or().like(Doctor::getDepartment, kw));
+            }
+            wrapper.orderByDesc(Doctor::getId);
+            Page<Doctor> result = doctorMapper.selectPage(pageParam, wrapper);
             List<Map<String, Object>> list = new ArrayList<>();
             for (Doctor d : result.getRecords()) {
                 Map<String, Object> m = new HashMap<>();
@@ -228,13 +241,17 @@ public class AdminServiceImpl implements AdminService {
         p.setRealName(req.getRealName());
         p.setGender(validateGender(req.getGender()));
         p.setPhone(validatePhone(req.getPhone()));
-        p.setIdCard(req.getIdCard());
+        // 身份证号：新增患者必填，且必须为 18 位（17 位数字 + 1 位数字或 X）
+        if (req.getIdCard() == null || req.getIdCard().isBlank()) {
+            throw new BizException("患者身份证号不能为空");
+        }
+        p.setIdCard(validateIdCard(req.getIdCard()));
         p.setStatus(normalizeStatus(req.getStatus(), "ACTIVE"));
         p.setCreatedAt(LocalDateTime.now());
         p.setUpdatedAt(LocalDateTime.now());
         patientMapper.insert(p);
 
-        writeAudit(operatorId, "CREATE_USER", "PATIENT", p.getId(),
+        writeAudit(operatorId, "CREATE_USER", p.getId(),
                 "新增患者：" + (p.getRealName() != null ? p.getRealName() : username));
         return patientMap(p);
     }
@@ -268,7 +285,7 @@ public class AdminServiceImpl implements AdminService {
         d.setUpdatedAt(LocalDateTime.now());
         doctorMapper.insert(d);
 
-        writeAudit(operatorId, "CREATE_USER", "DOCTOR", d.getId(),
+        writeAudit(operatorId, "CREATE_USER", d.getId(),
                 "新增医生：" + (d.getRealName() != null ? d.getRealName() : employeeNo));
         return doctorMap(d);
     }
@@ -294,7 +311,8 @@ public class AdminServiceImpl implements AdminService {
         if (req.getRealName() != null) p.setRealName(req.getRealName());
         if (req.getGender() != null) p.setGender(validateGender(req.getGender()));
         if (req.getPhone() != null) p.setPhone(validatePhone(req.getPhone()));
-        if (req.getIdCard() != null) p.setIdCard(req.getIdCard());
+        // 身份证号：修改时提供非空值则校验必须为 18 位，避免不足 18 位也能保存
+        if (req.getIdCard() != null) p.setIdCard(validateIdCard(req.getIdCard()));
         if (req.getStatus() != null) p.setStatus(normalizeStatus(req.getStatus(), p.getStatus()));
         if (req.getPassword() != null && !req.getPassword().isBlank()) {
             p.setPassword(encodePassword(req.getPassword()));
@@ -302,7 +320,7 @@ public class AdminServiceImpl implements AdminService {
         p.setUpdatedAt(LocalDateTime.now());
         patientMapper.updateById(p);
 
-        writeAudit(operatorId, "UPDATE_USER", "PATIENT", id, "修改患者：" + p.getUsername());
+        writeAudit(operatorId, "UPDATE_USER", id, "修改患者：" + p.getUsername());
         return patientMap(p);
     }
 
@@ -338,7 +356,7 @@ public class AdminServiceImpl implements AdminService {
         d.setUpdatedAt(LocalDateTime.now());
         doctorMapper.updateById(d);
 
-        writeAudit(operatorId, "UPDATE_USER", "DOCTOR", id, "修改医生：" + d.getEmployeeNo());
+        writeAudit(operatorId, "UPDATE_USER", id, "修改医生：" + d.getEmployeeNo());
         return doctorMap(d);
     }
 
@@ -370,6 +388,19 @@ public class AdminServiceImpl implements AdminService {
         return p;
     }
 
+    /**
+     * 校验身份证号格式：必须为 18 位（17 位数字 + 1 位数字或 X/x）。
+     * 空值返回 null（修改场景表示不修改该字段）；格式不合法抛出业务异常。
+     */
+    private String validateIdCard(String idCard) {
+        if (idCard == null || idCard.isBlank()) return null;
+        String c = idCard.trim();
+        if (!c.matches("\\d{17}[\\dXx]")) {
+            throw new BizException("身份证号需为 18 位（17 位数字 + 1 位数字或 X）");
+        }
+        return c;
+    }
+
     private String normalizeStatus(String status, String defaultStatus) {
         if (status == null || status.isBlank()) return defaultStatus;
         String s = status.trim().toUpperCase();
@@ -388,17 +419,48 @@ public class AdminServiceImpl implements AdminService {
         return s;
     }
 
-    private void writeAudit(Long operatorId, String action, String targetType, Long targetId, String detail) {
+    /**
+     * 写入一条管理员操作审计日志
+     * 自动打标敏感等级（按操作类型）并将审核状态置为待审核（PENDING）
+     * @param operatorId 操作人ID（管理员ID）
+     * @param action     操作类型（CREATE_USER/UPDATE_USER 等）
+     * @param targetId   操作目标ID（如患者/医生ID）
+     * @param detail     操作详情描述
+     */
+    private void writeAudit(Long operatorId, String action, Long targetId, String detail) {
         AuditLog log = new AuditLog();
         log.setUserId(operatorId);
         log.setRole("ADMIN");
         log.setAction(action);
-        log.setTargetType(targetType);
         log.setTargetId(targetId);
         log.setDetail(detail);
-        log.setActionTaken("ALLOW");
+        log.setSensitiveLevel(determineSensitiveLevel(action));
+        log.setReviewStatus("PENDING");
         log.setCreatedAt(LocalDateTime.now());
         auditLogMapper.insert(log);
+    }
+
+    /**
+     * 根据操作类型判定敏感等级
+     * 规则：新增类操作（CREATE 开头）→ LOW；修改类操作（UPDATE 开头）→ MEDIUM；
+     *      删除类操作（DELETE/DEL 开头）→ HIGH；其余未知类型保守取 MEDIUM
+     * @param action 操作类型枚举（如 CREATE_USER / UPDATE_USER）
+     * @return 敏感等级 LOW / MEDIUM / HIGH
+     */
+    private String determineSensitiveLevel(String action) {
+        if (action == null) {
+            return "MEDIUM";
+        }
+        if (action.startsWith("CREATE")) {
+            return "LOW";
+        }
+        if (action.startsWith("UPDATE")) {
+            return "MEDIUM";
+        }
+        if (action.startsWith("DELETE") || action.startsWith("DEL")) {
+            return "HIGH";
+        }
+        return "MEDIUM";
     }
 
     private Map<String, Object> patientMap(Patient p) {
@@ -436,6 +498,14 @@ public class AdminServiceImpl implements AdminService {
         return Arrays.asList("PATIENT", "DOCTOR", "ADMIN");
     }
 
+    /**
+     * 分页查询审计日志
+     * @param page   页码（从 1 开始）
+     * @param size   每页条数
+     * @param role   按角色过滤（PATIENT/DOCTOR/ADMIN，可空）
+     * @param action 按操作类型过滤（CREATE_USER/UPDATE_USER 等，可空）
+     * @return 分页结果，含总条数与当前页记录
+     */
     @Override
     public PageResult<?> getAuditLogs(int page, int size, String role, String action) {
         LambdaQueryWrapper<AuditLog> wrapper = new LambdaQueryWrapper<>();
@@ -452,11 +522,44 @@ public class AdminServiceImpl implements AdminService {
         return PageResult.of(result.getTotal(), result.getRecords(), page, size);
     }
 
+    /**
+     * 审核一条审计日志（通过或驳回）
+     * 规则：仅待审核（PENDING）日志可审核，已审核的不允许重复审核；
+     *      驳回（REJECTED）时自动禁用「发起该操作的管理员」账号（sm_admin.status=DISABLED），
+     *      使其无法再登录进行后续业务操作（登录校验在 login 中已处理）；通过（APPROVED）不禁用。
+     * @param id       审计日志ID
+     * @param decision 审核结论：APPROVED 通过 / REJECTED 驳回
+     */
     @Override
-    public List<?> getAllKnowledgeBases() {
-        return knowledgeBaseMapper.selectList(
-                new LambdaQueryWrapper<KnowledgeBase>().orderByDesc(KnowledgeBase::getId)
-        );
+    @Transactional
+    public void reviewAuditLog(Long id, String decision) {
+        if (id == null) {
+            throw new BizException("审计日志ID不能为空");
+        }
+        if (decision == null || decision.trim().isEmpty()) {
+            throw new BizException("审核结论 decision 不能为空");
+        }
+        String finalDecision = decision.trim().toUpperCase();
+        if (!"APPROVED".equals(finalDecision) && !"REJECTED".equals(finalDecision)) {
+            throw new BizException("审核结论只允许 APPROVED 或 REJECTED");
+        }
+        AuditLog log = auditLogMapper.selectById(id);
+        if (log == null) {
+            throw new BizException("审计日志不存在");
+        }
+        if (!"PENDING".equalsIgnoreCase(log.getReviewStatus())) {
+            throw new BizException("该日志已审核，不可重复审核");
+        }
+        // 驳回时禁用发起该操作的管理员账号，实现「不可行则禁止该用户修改/删除业务操作」
+        if ("REJECTED".equals(finalDecision)) {
+            Admin operator = adminMapper.selectById(log.getUserId());
+            if (operator != null) {
+                operator.setStatus("DISABLED");
+                adminMapper.updateById(operator);
+            }
+        }
+        log.setReviewStatus(finalDecision);
+        auditLogMapper.updateById(log);
     }
 
     @Override
@@ -471,15 +574,5 @@ public class AdminServiceImpl implements AdminService {
         return dataQualityMapper.selectList(
                 new LambdaQueryWrapper<DataQuality>().orderByDesc(DataQuality::getId)
         );
-    }
-
-    @Override
-    public List<?> getSensitiveContents(String status) {
-        LambdaQueryWrapper<SensitiveContent> wrapper = new LambdaQueryWrapper<>();
-        if (status != null && !status.trim().isEmpty()) {
-            wrapper.eq(SensitiveContent::getReviewStatus, status.trim());
-        }
-        wrapper.orderByDesc(SensitiveContent::getId);
-        return sensitiveContentMapper.selectList(wrapper);
     }
 }

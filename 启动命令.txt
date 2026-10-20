@@ -1,0 +1,21 @@
+前端（Vite，端口 5173）
+
+cd D:\smart-medical\smart-medical-frontend
+npm run dev
+
+
+## 后端（Spring Boot，端口 8080）
+方式 A（如果要用 Maven run 的代码，推荐开发时用，可实时热编译）：
+
+Bash
+
+运行
+
+cd D:\smart-medical\smart-medical-backend
+mvn spring-boot:run
+
+方式 B（运行已构建好的 jar，我当前就是用这个方式启动的）：
+
+Bash
+cd D:\smart-medical\smart-medical-backend
+java -jar target\smart-medical-1.0.0.jar

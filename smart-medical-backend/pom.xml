@@ -15,7 +15,7 @@
     <artifactId>smart-medical</artifactId>
     <version>1.0.0</version>
     <name>smart-medical</name>
-    <description>智能医疗系统 - 本地模拟Demo</description>
+    <description>智能医疗系统</description>
 
     <properties>
         <java.version>24</java.version>

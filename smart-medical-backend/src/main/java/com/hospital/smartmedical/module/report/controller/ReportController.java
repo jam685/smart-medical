@@ -4,12 +4,14 @@ import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.result.PageResult;
 import com.hospital.smartmedical.common.result.Result;
 import com.hospital.smartmedical.module.report.entity.Report;
-import com.hospital.smartmedical.module.report.entity.ReportInterpretation;
 import com.hospital.smartmedical.module.report.service.ReportService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/reports")
@@ -35,18 +37,13 @@ public class ReportController {
     }
 
     @PostMapping("/upload")
-    public Result<Long> upload(@RequestParam("file") MultipartFile file,
-                               HttpServletRequest request) {
+    public Result<Map<String, Object>> upload(@RequestParam("file") MultipartFile file,
+                                              HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("currentUserId");
         Report report = reportService.upload(file, userId);
-        return Result.ok(report.getId());
-    }
-
-    @GetMapping("/{id}/interpretation")
-    public Result<ReportInterpretation> getInterpretation(@PathVariable Long id,
-                                                          HttpServletRequest request) {
-        Long userId = (Long) request.getAttribute("currentUserId");
-        Role role = (Role) request.getAttribute("currentUserRole");
-        return Result.ok(reportService.getInterpretation(id, userId, role));
+        Map<String, Object> data = new HashMap<>();
+        data.put("id", report.getId());
+        data.put("imageUrl", report.getImageUrl());
+        return Result.ok(data);
     }
 }

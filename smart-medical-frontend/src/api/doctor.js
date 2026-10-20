@@ -33,3 +33,11 @@ export function uploadAvatar(file) {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
+
+/**
+ * 获取当前医生「我的患者」列表（按最近就诊时间倒序）
+ * @returns {Promise<Array>} [{patientId, realName, phone, lastVisitTime}]
+ */
+export function fetchMyPatients() {
+  return request.get('/doctors/me/patients')
+}

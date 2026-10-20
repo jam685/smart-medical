@@ -60,7 +60,6 @@ public class DoctorController {
                                                  HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("currentUserId");
         Doctor updated = doctorService.update(userId, updates);
-
         Map<String, Object> result = new HashMap<>();
         result.put("id", updated.getId());
         result.put("employeeNo", updated.getEmployeeNo());

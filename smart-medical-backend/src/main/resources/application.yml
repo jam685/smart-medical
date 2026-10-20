@@ -8,9 +8,18 @@ spring:
     name: smart-medical
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/smart_medical?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    url: jdbc:mysql://localhost:3306/smart_medical?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&rewriteBatchedStatements=true
     username: root
     password: 123456
+    # 高并发调优：连接池扩容（默认仅 10 连接，并发登录/查询会排队甚至报错）
+    # 提示：本机 MySQL max_connections 需同步调大（默认 151），否则池扩大会触发 MySQL 拒绝连接
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 5000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: SmartMedicalHikariPool
   sql:
     init:
       mode: never
@@ -28,7 +37,8 @@ mybatis-plus:
   type-aliases-package: com.hospital.smartmedical.module.*.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    # 高并发调优：关闭 SQL 全量 stdout 日志，避免日志刷屏消耗 CPU/IO（排查 SQL 时可临时改回 StdOutImpl）
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
   global-config:
     db-config:
       id-type: auto

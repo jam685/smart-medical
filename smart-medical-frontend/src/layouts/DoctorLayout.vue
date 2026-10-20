@@ -7,9 +7,7 @@ import AppLogo from '@/components/AppLogo.vue'
 import {
   Monitor,
   User,
-  Tickets,
   ChatDotSquare,
-  EditPen,
   DataAnalysis,
 } from '@element-plus/icons-vue'
 
@@ -21,10 +19,8 @@ const activeMenu = computed(() => route.path)
 
 const menus = [
   { path: '/doctor/home', title: '工作台', icon: Monitor },
-  { path: '/doctor/patients', title: '我的患者', icon: User },
-  { path: '/doctor/appointments', title: '挂号管理', icon: Tickets },
+  { path: '/doctor/appointments', title: '接诊管理', icon: User },
   { path: '/doctor/online-consults', title: '问诊处理', icon: ChatDotSquare },
-  { path: '/doctor/medical-notes', title: '电子病历', icon: EditPen },
   { path: '/doctor/ai-analysis', title: 'AI 辅助分析', icon: DataAnalysis },
 ]
 

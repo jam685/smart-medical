@@ -76,7 +76,7 @@
                 报告解读到电子病历的全流程数字化闭环。
               </p>
               <p>
-                平台以 <strong>AI 辅助诊断、智能报告解读、在线问诊</strong>为核心能力，
+                平台以 <strong>AI 辅助诊断、在线问诊</strong>为核心能力，
                 让优质医疗资源触手可及；同时坚守「<strong>医生在环、AI 辅助</strong>」的合规底线——
                 所有 AI 输出均经专业医生审核确认，敏感信息实时拦截，关键操作全程留痕。
               </p>
@@ -222,7 +222,7 @@
                   <span><svg viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>电子病历</span>
                 </div>
                 <button class="enter-btn patient-btn">
-                  进入患者端
+                  登录
                   <svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
               </div>
@@ -250,7 +250,7 @@
                   <span><svg viewBox="0 0 16 16"><path d="M12 2l2 2-8 8H4v-2l8-8z" stroke="currentColor" stroke-width="2" fill="none"/></svg>电子签名</span>
                 </div>
                 <button class="enter-btn doctor-btn">
-                  进入医生端
+                   登录
                   <svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
               </div>
@@ -278,7 +278,7 @@
                   <span><svg viewBox="0 0 16 16"><rect x="2" y="4" width="12" height="8" rx="1" stroke="currentColor" stroke-width="2"/></svg>知识库</span>
                 </div>
                 <button class="enter-btn admin-btn">
-                  进入管理端
+                   登录
                   <svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
               </div>

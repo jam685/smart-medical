@@ -234,6 +234,12 @@ public class AppointmentServiceImpl implements AppointmentService {
         if ("FINISHED".equals(appt.getStatus())) {
             throw new BizException("已完成的挂号不能取消");
         }
+        // 业务规则：医生未叫号前患者可取消挂号；一旦医生已叫号（visit 进入 CALLING 及之后），不允许取消
+        Visit visit = visitMapper.selectOne(
+                new LambdaQueryWrapper<Visit>().eq(Visit::getAppointmentId, id).last("LIMIT 1"));
+        if (visit != null && !"WAITING".equals(visit.getStatus())) {
+            throw new BizException("医生已叫号，无法取消挂号");
+        }
         appt.setStatus("CANCELLED");
         appt.setUpdatedAt(LocalDateTime.now());
         appointmentMapper.updateById(appt);

@@ -12,8 +12,8 @@ import com.hospital.smartmedical.module.medicalnote.entity.MedicalNoteVersion;
 import com.hospital.smartmedical.module.medicalnote.mapper.MedicalNoteMapper;
 import com.hospital.smartmedical.module.medicalnote.mapper.MedicalNoteVersionMapper;
 import com.hospital.smartmedical.module.medicalnote.service.MedicalNoteService;
-import com.hospital.smartmedical.module.onlineconsult.entity.OnlineConsult;
-import com.hospital.smartmedical.module.onlineconsult.mapper.OnlineConsultMapper;
+import com.hospital.smartmedical.module.onlineconsult.entity.OnlineConsultRecord;
+import com.hospital.smartmedical.module.onlineconsult.mapper.OnlineConsultRecordMapper;
 import com.hospital.smartmedical.module.patient.entity.Patient;
 import com.hospital.smartmedical.module.patient.mapper.PatientMapper;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +29,7 @@ public class MedicalNoteServiceImpl implements MedicalNoteService {
 
     private final MedicalNoteMapper medicalNoteMapper;
     private final MedicalNoteVersionMapper medicalNoteVersionMapper;
-    private final OnlineConsultMapper onlineConsultMapper;
+    private final OnlineConsultRecordMapper onlineConsultMapper;
     private final PatientMapper patientMapper;
 
     private static final String STATUS_PREVIEW = "PREVIEW";
@@ -40,7 +40,7 @@ public class MedicalNoteServiceImpl implements MedicalNoteService {
     @Override
     @Transactional
     public MedicalNote previewNote(Long consultId, Long doctorId) {
-        OnlineConsult consult = onlineConsultMapper.selectById(consultId);
+        OnlineConsultRecord consult = onlineConsultMapper.selectById(consultId);
         if (consult == null) {
             throw new BizException(ErrorCode.NOT_FOUND);
         }
@@ -76,8 +76,8 @@ public class MedicalNoteServiceImpl implements MedicalNoteService {
         sb.append("【NOTE-00 门诊病历预览】\n");
         sb.append("患者：").append(patientName).append("　年龄：").append(age).append("\n");
         sb.append("科别：").append(consult.getDepartment() != null ? consult.getDepartment() : "未填写").append("\n");
-        sb.append("主诉：").append(consult.getChiefComplaint() != null ? consult.getChiefComplaint() : "").append("\n");
-        sb.append("现病史：").append(consult.getDescription() != null ? consult.getDescription() : "无").append("\n");
+        sb.append("主诉：待补充\n");
+        sb.append("现病史：待补充\n");
         sb.append("初步诊断：待进一步明确\n");
         sb.append("处理建议：建议完善相关检查，根据检查结果制定治疗方案。\n");
         sb.append("———— 以下由医生补充 ————\n");
@@ -91,11 +91,10 @@ public class MedicalNoteServiceImpl implements MedicalNoteService {
 
         medicalNoteMapper.insert(note);
 
-        // 初始化版本记录
+        // 初始化版本记录（V1.3 精简：仅记录版本轨迹，无内容列）
         MedicalNoteVersion v = new MedicalNoteVersion();
         v.setNoteId(note.getId());
         v.setVersion(1);
-        v.setContent(note.getDraft());
         v.setModifiedBy(doctorId);
         v.setCreatedAt(LocalDateTime.now());
         medicalNoteVersionMapper.insert(v);
@@ -168,11 +167,10 @@ public class MedicalNoteServiceImpl implements MedicalNoteService {
             throw new BizException(4090, "病历修改超过3次，已作废");
         }
 
-        // 保存当前版本
+        // 保存当前版本（V1.3 精简：仅记录版本轨迹，无内容列）
         MedicalNoteVersion v = new MedicalNoteVersion();
         v.setNoteId(note.getId());
         v.setVersion(modifiedCount + 1);
-        v.setContent(note.getDraft());
         v.setModifiedBy(doctorId);
         v.setCreatedAt(LocalDateTime.now());
         medicalNoteVersionMapper.insert(v);

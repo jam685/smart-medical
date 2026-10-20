@@ -20,8 +20,9 @@ public interface AdminService {
 
     /**
      * 分页查询患者或医生
+     * @param keyword 可选关键词：患者匹配 username / realName / phone / idCard；医生匹配 employeeNo / realName / phone / department
      */
-    PageResult<?> getUsersByRole(String role, int page, int size);
+    PageResult<?> getUsersByRole(String role, int page, int size, String keyword);
 
     /**
      * 更新用户状态（PATIENT / DOCTOR）
@@ -49,9 +50,11 @@ public interface AdminService {
     PageResult<?> getAuditLogs(int page, int size, String role, String action);
 
     /**
-     * 返回所有知识库
+     * 审核一条审计日志（通过或驳回）
+     * @param id       审计日志ID
+     * @param decision 审核结论：APPROVED 通过 / REJECTED 驳回（驳回自动禁用操作人账号）
      */
-    List<?> getAllKnowledgeBases();
+    void reviewAuditLog(Long id, String decision);
 
     /**
      * 返回所有模型配置
@@ -62,9 +65,4 @@ public interface AdminService {
      * 返回数据质量记录
      */
     List<?> getDataQuality();
-
-    /**
-     * 返回敏感内容列表
-     */
-    List<?> getSensitiveContents(String status);
 }

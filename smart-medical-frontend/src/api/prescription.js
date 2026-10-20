@@ -36,3 +36,11 @@ export function fetchPrescriptionByVisit(visitId) {
 export function fetchMyPrescriptions() {
   return request.get('/prescriptions/my')
 }
+
+/**
+ * 查询当前患者本人的处方列表（患者端"我的报告-处方报告"使用）
+ * @returns {Promise<Array>} 处方 VO 数组（按处方编号分组，含药品明细）
+ */
+export function fetchPatientPrescriptions() {
+  return request.get('/prescriptions/patient/me')
+}

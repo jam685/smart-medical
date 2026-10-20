@@ -1,45 +1,42 @@
 package com.hospital.smartmedical.module.ai.service;
 
-import com.hospital.smartmedical.module.ai.entity.AiChatMessage;
-
-import java.util.List;
 import java.util.Map;
 
+/**
+ * AI 辅助分析服务接口。
+ * V2.3 移除原 AI 客服（会话/消息）能力，仅保留 4 个医生端 AI 辅助接口，
+ * 当前为 Demo 模拟实现（ai.mock-mode），待接入真实 FastAPI + 大模型。
+ */
 public interface AiService {
 
     /**
-     * AI 客服对话（Demo 模式）
-     */
-    Map<String, Object> chat(Long userId, String role, String sessionKey, String message);
-
-    /**
-     * 转人工
-     */
-    Map<String, Object> transferToHuman(String sessionKey);
-
-    /**
-     * 获取会话历史
-     */
-    List<AiChatMessage> getChatHistory(String sessionKey);
-
-    /**
-     * 医生端：病情分析（Demo）
+     * 病情分析：根据主诉、详细描述与患者信息，返回病情分析、诊断/鉴别/用药建议与风险等级。
+     * 返回结构：conditionAnalysis / diagnosisSuggestion / differentialDiagnosis /
+     * medicationSuggestion / riskLevel / confidence / references / disclaimer
+     *
+     * @param chiefComplaint 主诉
+     * @param description    详细描述
+     * @param patientInfo    患者基本信息（年龄/性别/既往史等）
      */
     Map<String, Object> clinicalAnalysis(String chiefComplaint, String description,
                                          Map<String, Object> patientInfo);
 
     /**
-     * 医生端：检查建议（Demo）
+     * 检查建议：根据主诉与描述，生成建议的检查项目清单。
+     * 返回结构：examinationList / urgency / confidence / note
      */
     Map<String, Object> examinationSuggestions(String chiefComplaint, String description);
 
     /**
-     * 医生端：回复草稿（Demo）
+     * 回复草稿：为医生生成给患者的礼貌、专业回复草稿。
+     * 返回结构：draft / confidence / tone / suggestedEdit
      */
     Map<String, Object> replyDrafts(String chiefComplaint, String description);
 
     /**
-     * 医生端：图片/报告分析
+     * 图片/报告分析：根据报告 id 读取报告信息，返回 AI 分析结果（Demo 返回通用占位）。
+     * 返回结构：reportId / reportTitle / recognizedContent / analysis /
+     * abnormalItems / referenceRanges / confidence / needHuman / disclaimer
      */
     Map<String, Object> imageAnalysis(Long reportId);
 }

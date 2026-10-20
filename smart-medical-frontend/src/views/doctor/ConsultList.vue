@@ -2,10 +2,10 @@
 /**
  * 医生端「问诊处理」列表页组件
  * 职责：加载当前医生接诊的问诊，按状态分组（待处理/已回复），点击进入处理聊天页。
- * 数据来源：GET /online-consults（后端按医生本人过滤，未关闭问诊）
+ * 数据来源：GET /online-consults（后端按医生本人过滤，含已关闭问诊）
  * 状态口径（后端枚举）：
  *   PENDING / AI_ANALYZED / DOCTOR_REVIEWING → 待处理
- *   REPLIED → 已回复
+ *   REPLIED → 已回复；CLOSED → 已关闭
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -33,29 +33,39 @@ const consults = ref([])
 /** 列表加载状态 */
 const loading = ref(false)
 
+/** 分页：每页条数（每满 6 条换页） */
+const PAGE_SIZE = 6
+/** 当前页码 */
+const currentPage = ref(1)
+/** 总记录数（后端返回） */
+const total = ref(0)
+
 /**
- * 把后端问诊实体归一化为页面渲染对象
- * @param {object} raw 后端 OnlineConsult 实体
+ * 把后端问诊对象归一化为页面渲染对象（医生视角含姓名 / 叫号时间）
+ * @param {object} raw 后端 OnlineConsultRecord（医生视角为增强 VO）
  * @returns {object} 视图对象
  */
 function normalize(raw) {
   return {
     id: raw.id,
     department: raw.department || '未指定科室',
+    patientName: raw.patientName || '未知患者',
     chiefComplaint: raw.chiefComplaint || '未填写主诉',
     status: mapStatus(raw.status),
     statusText: statusText(raw.status),
     createdAt: formatTime(raw.createdAt),
+    callTime: formatTime(raw.callTime),
   }
 }
 
 /**
  * 后端状态码映射为页面状态键
  * @param {string} s 后端状态码
- * @returns {string} pending/replied（未知状态兜底为 pending）
+ * @returns {string} pending/replied/closed（未知状态兜底为 pending）
  */
 function mapStatus(s) {
   if (s === 'REPLIED') return 'replied'
+  if (s === 'CLOSED') return 'closed'
   return 'pending' // PENDING / AI_ANALYZED / DOCTOR_REVIEWING 均视为待处理
 }
 
@@ -66,6 +76,7 @@ function mapStatus(s) {
  */
 function statusText(s) {
   if (s === 'REPLIED') return '已回复'
+  if (s === 'CLOSED') return '已关闭'
   if (s === 'AI_ANALYZED') return '分析中'
   if (s === 'DOCTOR_REVIEWING') return '处理中'
   return '待接诊'
@@ -81,12 +92,14 @@ function formatTime(t) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-/** 从后端加载当前医生的问诊列表 */
-async function loadConsults() {
+/** 从后端加载当前医生的问诊列表（每页 6 条，后端已按医生最新回复时间倒序） */
+async function loadConsults(page = 1) {
   loading.value = true
   try {
-    const page = await fetchConsults({ page: 1, size: 100 })
-    consults.value = (page.list || []).map(normalize)
+    const res = await fetchConsults({ page, size: PAGE_SIZE })
+    currentPage.value = page
+    total.value = res.total || 0
+    consults.value = (res.list || []).map(normalize)
   } catch (e) {
     // 请求失败提示已由 axios 拦截器统一处理
   } finally {
@@ -94,10 +107,16 @@ async function loadConsults() {
   }
 }
 
+/** 翻页 */
+function onPageChange(p) {
+  loadConsults(p)
+}
+
 /** 状态展示配置 */
 const statusMap = {
   pending: { label: '待处理', cls: 'st-pending' },
   replied: { label: '已回复', cls: 'st-replied' },
+  closed: { label: '已关闭', cls: 'st-closed' },
 }
 
 /** 当前 Tab 下应展示的问诊 */
@@ -144,19 +163,32 @@ onMounted(loadConsults)
       <div v-for="c in filtered" :key="c.id" class="consult-card" @click="goHandle(c)">
         <div class="consult-main">
           <div class="main-top">
-            <span class="chief">{{ c.chiefComplaint }}</span>
+            <span class="patient-name">{{ c.patientName }}</span>
             <span class="status-tag" :class="statusMap[c.status].cls">{{ c.statusText }}</span>
           </div>
           <div class="main-meta">
             <span class="dept-tag">{{ c.department }}</span>
             <span class="dot-sep">·</span>
-            <span>发起于 {{ c.createdAt }}</span>
+            <span>叫号时间 {{ c.callTime || '—' }}</span>
           </div>
+          <div class="chief-line">{{ c.chiefComplaint }}</div>
         </div>
         <div class="consult-actions" @click.stop>
           <el-button text class="detail-link" @click="goHandle(c)">去处理 ›</el-button>
         </div>
       </div>
+    </div>
+
+    <!-- 分页（每满 6 条换页） -->
+    <div v-if="total > PAGE_SIZE" class="pager">
+      <el-pagination
+        background
+        layout="prev, pager, next"
+        :total="total"
+        :page-size="PAGE_SIZE"
+        :current-page="currentPage"
+        @current-change="onPageChange"
+      />
     </div>
 
     <!-- 空状态 -->
@@ -207,15 +239,24 @@ onMounted(loadConsults)
 .consult-card:hover { border-color: #A7F3D0; box-shadow: 0 10px 24px rgba(16,185,129,0.1); transform: translateY(-2px); }
 .consult-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .main-top { display: flex; align-items: center; gap: 12px; }
-.chief { font-size: 16px; font-weight: 700; color: #1A2B45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.patient-name { font-size: 16px; font-weight: 700; color: #1A2B45; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-tag { margin-left: auto; font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 100px; }
 .st-pending { color: #1E7AE6; background: #E3F2FF; }
 .st-replied { color: #0E9F6E; background: #E2F7EF; }
+.st-closed { color: #8492A6; background: #EFF2F6; }
 .main-meta { font-size: 12.5px; color: #A7B1BF; display: flex; align-items: center; gap: 7px; }
 .dept-tag { font-size: 12px; color: #10B981; background: #E8F9F1; padding: 2px 9px; border-radius: 100px; }
 .dot-sep { color: #C3CCD8; }
+.chief-line { font-size: 13px; color: #5A6B82; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .consult-actions { flex-shrink: 0; }
 .detail-link { color: #10B981; font-weight: 600; padding: 0; }
+
+/* 分页 */
+.pager { display: flex; justify-content: center; margin-top: 20px; }
+.pager :deep(.el-pagination.is-background .el-pager li.is-active) {
+  background: linear-gradient(135deg, #10B981, #34D399);
+  border-color: transparent;
+}
 
 /* 空状态 */
 .empty-state { text-align: center; padding: 50px 0 30px; }

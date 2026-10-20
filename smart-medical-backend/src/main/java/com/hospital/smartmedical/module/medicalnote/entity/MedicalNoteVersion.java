@@ -15,13 +15,15 @@ public class MedicalNoteVersion implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** 病历主键 ID（sm_medical_note.id） */
     private Long noteId;
 
+    /** 版本号 */
     private Integer version;
 
-    private String content;
-
+    /** 修改人 ID */
     private Long modifiedBy;
 
+    /** 修改时间 */
     private LocalDateTime createdAt;
 }

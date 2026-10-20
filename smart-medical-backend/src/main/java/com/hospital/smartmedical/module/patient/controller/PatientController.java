@@ -28,6 +28,17 @@ public class PatientController {
         return Result.ok(patientService.login(username, password));
     }
 
+    /**
+     * 患者注册（无需登录）：body { username, password, realName, gender, phone, idCard }
+     * 校验唯一性后入库，注册成功自动登录（返回 token + user）。
+     */
+    @PostMapping("/register")
+    public Result<Map<String, Object>> register(@RequestBody Map<String, String> body) {
+        return Result.ok(patientService.register(
+                body.get("username"), body.get("password"), body.get("realName"),
+                body.get("gender"), body.get("phone"), body.get("idCard")));
+    }
+
     @PostMapping("/logout")
     public Result<Void> logout() {
         patientService.logout();
@@ -74,6 +85,30 @@ public class PatientController {
                                        HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("currentUserId");
         patientService.changePassword(userId, body.get("oldPassword"), body.get("newPassword"));
+        return Result.ok();
+    }
+
+    /**
+     * 忘记密码-发送验证码（无需登录）：body { username, idCard, phone }
+     * 校验用户名/身份证/手机号匹配后返回验证码（演示环境直接透出，正式环境走短信）。
+     */
+    @PostMapping("/password-reset/code")
+    public Result<Map<String, Object>> sendPasswordResetCode(@RequestBody Map<String, String> body) {
+        String code = patientService.sendPasswordResetCode(
+                body.get("username"), body.get("idCard"), body.get("phone"));
+        Map<String, Object> result = new HashMap<>();
+        result.put("code", code);
+        return Result.ok(result);
+    }
+
+    /**
+     * 忘记密码-重置密码（无需登录）：body { username, code, newPassword }
+     * 验证码校验通过后写入新密码。
+     */
+    @PutMapping("/password-reset")
+    public Result<Void> resetPassword(@RequestBody Map<String, String> body) {
+        patientService.resetPassword(
+                body.get("username"), body.get("code"), body.get("newPassword"));
         return Result.ok();
     }
 

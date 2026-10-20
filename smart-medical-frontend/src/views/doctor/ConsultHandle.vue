@@ -7,14 +7,14 @@
  *   GET  /online-consults/{id}/messages   消息记录（按时间正序）
  *   POST /online-consults/{id}/confirm-reply  医生确认回复
  *   POST /online-consults/{id}/close      关闭问诊
- * 刷新策略：每 5 秒轮询消息，保证患者追问自动出现；发送/关闭后立即刷新。
+ * 刷新策略：每 10 秒轮询消息（高并发调优），保证患者追问自动出现；发送/关闭后立即刷新。
  */
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Promotion } from '@element-plus/icons-vue'
+import { ArrowLeft, Promotion, Upload } from '@element-plus/icons-vue'
 import {
-  fetchConsultDetail, fetchConsultMessages, confirmConsultReply, closeConsult,
+  fetchConsultDetail, fetchConsultMessages, confirmConsultReply, closeConsult, sendConsultMessage, uploadChatImage,
 } from '@/api/onlineconsult'
 
 const route = useRoute()
@@ -31,6 +31,8 @@ const messages = ref([])
 const loading = ref(false)
 /** 回复提交中状态 */
 const replying = ref(false)
+/** 图片上传中状态 */
+const uploading = ref(false)
 /** 关闭中状态 */
 const closing = ref(false)
 /** 回复输入内容 */
@@ -57,6 +59,12 @@ function statusText(s) {
 
 /** 问诊是否已关闭 */
 const isClosed = computed(() => detail.value?.consult?.status === 'CLOSED')
+
+/**
+ * 是否未接诊（就诊状态非 IN_PROGRESS/FINISHED）：
+ * 医生必须先到「接诊管理」点击「接诊」，才能与患者对话
+ */
+const chatBlocked = computed(() => detail.value != null && detail.value.chatEnabled === false)
 
 /** 患者信息（脱敏） */
 const patient = computed(() => detail.value?.patient || {})
@@ -125,6 +133,30 @@ async function reply() {
 }
 
 /**
+ * 上传图片：医生选择本机任意图片（不限于系统报告）→ 上传至 uploads/chat/ →
+ * 作为 IMAGE 图片消息发送给患者（患者端聊天流中直接可见，不写入报告表）。
+ * 由 el-upload 的 http-request 调用（options.file 为所选文件）。
+ */
+async function customUpload(options) {
+  const f = options?.file
+  if (!f) return
+  uploading.value = true
+  try {
+    const res = await uploadChatImage(f)
+    await sendConsultMessage(consultId, {
+      content: '医生发送了一张图片，请查看',
+      imageUrl: res.imageUrl,
+    })
+    ElMessage.success('图片已发送给患者')
+    await loadAll()
+  } catch (err) {
+    // 失败提示已由请求拦截器统一处理
+  } finally {
+    uploading.value = false
+  }
+}
+
+/**
  * 关闭问诊：二次确认后调用 POST /close，后端自动生成病历草稿。
  */
 async function handleClose() {
@@ -159,7 +191,7 @@ onMounted(async () => {
   loading.value = true
   await loadAll()
   loading.value = false
-  pollTimer = setInterval(loadMessages, 5000)
+  pollTimer = setInterval(loadMessages, 10000)
 })
 
 onUnmounted(() => {
@@ -201,7 +233,7 @@ onUnmounted(() => {
           <!-- 患者消息：左侧 -->
           <div v-else-if="m.sender === 'PATIENT'" class="msg-row left">
             <div class="bubble patient">
-              <img v-if="m.messageType === 'IMAGE' && m.imageUrl" :src="m.imageUrl" class="msg-img" alt="图片" />
+              <el-image v-if="m.messageType === 'IMAGE' && m.imageUrl" :src="m.imageUrl" class="msg-img" fit="cover" :preview-src-list="[m.imageUrl]" preview-teleported hide-on-click-modal />
               <div v-if="m.content" class="bubble-text">{{ m.content }}</div>
               <div class="bubble-time">{{ formatTime(m.createdAt) }}</div>
             </div>
@@ -209,7 +241,8 @@ onUnmounted(() => {
           <!-- 医生消息：右侧 -->
           <div v-else-if="m.sender === 'DOCTOR'" class="msg-row right">
             <div class="bubble doctor">
-              <div class="bubble-text">{{ m.content }}</div>
+              <el-image v-if="m.messageType === 'IMAGE' && m.imageUrl" :src="m.imageUrl" class="msg-img" fit="cover" :preview-src-list="[m.imageUrl]" preview-teleported hide-on-click-modal />
+              <div v-if="m.content" class="bubble-text">{{ m.content }}</div>
               <div class="bubble-time">{{ formatTime(m.createdAt) }}</div>
             </div>
           </div>
@@ -220,7 +253,17 @@ onUnmounted(() => {
 
     <!-- 输入区 -->
     <div class="chat-foot">
-      <template v-if="!isClosed">
+      <template v-if="!isClosed && !chatBlocked">
+        <el-upload
+          :show-file-list="false"
+          :http-request="customUpload"
+          accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+          :disabled="uploading"
+        >
+          <el-button text class="upload-btn" :loading="uploading">
+            <el-icon><Upload /></el-icon>&nbsp;上传图片
+          </el-button>
+        </el-upload>
         <el-input
           v-model="input"
           type="textarea"
@@ -234,6 +277,10 @@ onUnmounted(() => {
           <el-icon class="el-icon--left"><Promotion /></el-icon>发送回复
         </el-button>
       </template>
+      <div v-else-if="chatBlocked" class="blocked-tip">
+        <el-icon class="el-icon--left"><Promotion /></el-icon>
+        请先在「接诊管理」中点击「接诊」，接诊后即可回复患者
+      </div>
       <div v-else class="closed-tip">问诊已关闭</div>
     </div>
   </div>
@@ -270,13 +317,16 @@ onUnmounted(() => {
 .bubble.patient { background: #fff; color: #1A2B45; border: 1px solid #ECF1F7; border-bottom-left-radius: 4px; }
 .bubble.doctor { background: linear-gradient(135deg, #10B981, #34D399); color: #fff; border-bottom-right-radius: 4px; }
 .bubble-text { font-size: 14px; line-height: 1.6; word-break: break-word; white-space: pre-wrap; }
-.msg-img { max-width: 200px; border-radius: 10px; margin-bottom: 6px; display: block; }
+.msg-img { width: 200px; height: 150px; border-radius: 10px; margin-bottom: 6px; display: block; cursor: zoom-in; overflow: hidden; }
 .bubble-time { font-size: 11px; margin-top: 4px; opacity: 0.75; text-align: right; }
 .chat-empty { text-align: center; color: #A7B1BF; font-size: 13px; padding: 40px 0; }
 
 /* 输入区 */
 .chat-foot { display: flex; align-items: flex-end; gap: 12px; padding: 14px 18px; border-top: 1px solid #ECF1F7; }
 .chat-foot .el-textarea { flex: 1; }
+.upload-btn { color: #5A6B82; font-size: 13px; padding: 0 4px; height: 40px; }
+.upload-btn:hover { color: #10B981; }
 .send-btn { border-radius: 10px; height: 40px; }
 .closed-tip { flex: 1; text-align: center; color: #A7B1BF; font-size: 13px; padding: 10px 0; background: #FAFCFE; border-radius: 10px; }
+.blocked-tip { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; color: #B7791F; font-size: 13px; padding: 12px 0; background: #FFF7E6; border: 1px dashed #F0C36D; border-radius: 10px; }
 </style>

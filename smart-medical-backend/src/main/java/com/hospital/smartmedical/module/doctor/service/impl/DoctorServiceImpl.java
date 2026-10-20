@@ -156,6 +156,23 @@ public class DoctorServiceImpl implements DoctorService {
             return Collections.emptyList();
         }
 
+        // 过滤：关联挂号单已被取消的就诊不纳入"我的患者"（患者已取消挂号）
+        List<Visit> activeVisits = new ArrayList<>();
+        for (Visit v : visits) {
+            if (v.getAppointmentId() != null) {
+                Appointment appt = appointmentMapper.selectById(v.getAppointmentId());
+                if (appt != null && "CANCELLED".equals(appt.getStatus())) {
+                    continue; // 跳过
+                }
+            }
+            activeVisits.add(v);
+        }
+        visits = activeVisits;
+
+        if (visits.isEmpty()) {
+            return Collections.emptyList();
+        }
+
         // 每个 patientId 找一次最近 visitTime
         Map<Long, LocalDateTime> lastVisitMap = visits.stream()
                 .collect(Collectors.toMap(

@@ -3,7 +3,7 @@
  * 患者端「在线问诊」列表页组件
  * 职责：从后端加载当前患者发起的全部问诊，支持按状态分组筛选，点击卡片进入聊天详情，
  *       顶部「发起问诊」入口跳转新建页。
- * 数据来源：GET /online-consults（后端按患者本人过滤，返回 sm_online_consult 实体）
+ * 数据来源：GET /online-consults（后端按患者本人过滤，返回 sm_online_consult_record 实体）
  * 状态口径（后端枚举）：
  *   PENDING / AI_ANALYZED / DOCTOR_REVIEWING → 进行中
  *   REPLIED → 已回复；CLOSED → 已关闭

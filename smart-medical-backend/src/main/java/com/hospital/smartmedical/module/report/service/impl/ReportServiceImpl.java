@@ -6,9 +6,8 @@ import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.exception.BizException;
 import com.hospital.smartmedical.common.result.ErrorCode;
 import com.hospital.smartmedical.common.result.PageResult;
+import com.hospital.smartmedical.common.storage.FileStorageService;
 import com.hospital.smartmedical.module.report.entity.Report;
-import com.hospital.smartmedical.module.report.entity.ReportInterpretation;
-import com.hospital.smartmedical.module.report.mapper.ReportInterpretationMapper;
 import com.hospital.smartmedical.module.report.mapper.ReportMapper;
 import com.hospital.smartmedical.module.report.service.ReportService;
 import lombok.RequiredArgsConstructor;
@@ -27,9 +26,7 @@ import java.util.Set;
 public class ReportServiceImpl implements ReportService {
 
     private final ReportMapper reportMapper;
-    private final ReportInterpretationMapper interpretationMapper;
-
-    private static final Set<String> ALLOWED_EXT = new HashSet<>(Arrays.asList("jpg", "jpeg", "png"));
+    private final FileStorageService fileStorageService;
 
     @Override
     public PageResult<Report> listReports(Long userId, Role role, int page, int size) {
@@ -66,21 +63,9 @@ public class ReportServiceImpl implements ReportService {
         if (file == null || file.isEmpty()) {
             throw new BizException(ErrorCode.PARAM_ERROR);
         }
-        String originalName = file.getOriginalFilename();
-        if (originalName == null) {
-            throw new BizException(ErrorCode.PARAM_ERROR);
-        }
-        int dot = originalName.lastIndexOf('.');
-        if (dot < 0) {
-            throw new BizException(ErrorCode.PARAM_ERROR);
-        }
-        String ext = originalName.substring(dot + 1).toLowerCase();
-        if (!ALLOWED_EXT.contains(ext)) {
-            throw new BizException(ErrorCode.PARAM_ERROR, "仅支持 jpg / png 图片");
-        }
 
-        // Demo 用：不真正存 MinIO，直接用文件名生成 imageUrl
-        String imageUrl = "/demo-images/" + System.currentTimeMillis() + "_" + originalName;
+        // 真实保存图片到 uploads/reports/，返回可直接访问的 URL（含 context-path）
+        String imageUrl = fileStorageService.saveImage(file, "reports", "report");
 
         Report report = new Report();
         report.setImageUrl(imageUrl);
@@ -90,29 +75,5 @@ public class ReportServiceImpl implements ReportService {
         report.setCreatedAt(LocalDateTime.now());
         reportMapper.insert(report);
         return report;
-    }
-
-    @Override
-    public ReportInterpretation getInterpretation(Long reportId, Long userId, Role role) {
-        Report report = reportMapper.selectById(reportId);
-        if (report == null) {
-            throw new BizException(ErrorCode.NOT_FOUND);
-        }
-        if (role == Role.PATIENT && !report.getPatientId().equals(userId)) {
-            throw new BizException(ErrorCode.FORBIDDEN);
-        }
-
-        LambdaQueryWrapper<ReportInterpretation> qw = new LambdaQueryWrapper<>();
-        qw.eq(ReportInterpretation::getReportId, reportId).last("LIMIT 1");
-        ReportInterpretation interp = interpretationMapper.selectOne(qw);
-        if (interp == null) {
-            return null;
-        }
-        if (role == Role.PATIENT) {
-            // 过滤掉医生端字段
-            interp.setConfidence(null);
-            interp.setReferences(null);
-        }
-        return interp;
     }
 }

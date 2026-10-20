@@ -30,6 +30,10 @@
         <div class="demo-account">
           <div class="demo-title">🎯 演示账号（点击自动填充）</div>
           <div class="demo-cards">
+            <div class="demo-card" @click="fillDemo('D015', '123456')">
+              <strong>韩医生 · 急诊科</strong>
+              <small>D015 / 123456 · 在线</small>
+            </div>
             <div class="demo-card" @click="fillDemo('D001', '123456')">
               <strong>李医生 · 内分泌</strong>
               <small>D001 / 123456 · 在线</small>

@@ -10,7 +10,7 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Remove, Edit, Document } from '@element-plus/icons-vue'
+import { Plus, Remove, Edit, Document, Search } from '@element-plus/icons-vue'
 import { fetchVisits, updateVisitStatus } from '@/api/visit'
 import { createPrescription, fetchPrescriptionByVisit } from '@/api/prescription'
 
@@ -30,6 +30,24 @@ const tabs = [
 
 /** 当前选中的 Tab 键 */
 const activeTab = ref('all')
+
+// ============== 分页 ==============
+/** 每页条数（每满 6 条换页） */
+const PAGE_SIZE = 6
+/** 当前页码 */
+const currentPage = ref(1)
+
+// ============== 搜索 ==============
+/** 患者姓名关键词（模糊匹配） */
+const searchName = ref('')
+/** 就诊日期（YYYY-MM-DD，匹配当天就诊） */
+const searchDate = ref('')
+
+/** 清除搜索条件 */
+function clearSearch() {
+  searchName.value = ''
+  searchDate.value = ''
+}
 
 // ============== 接口数据 ==============
 /** 就诊记录数组（后端 VisitVO），初始为空 */
@@ -63,13 +81,54 @@ async function loadVisits() {
 }
 
 /**
- * 当前 Tab 下应展示的就诊记录
+ * 当前 Tab + 搜索条件下应展示的就诊记录。
+ * 排序规则：
+ *   1. 按就诊进度状态为最优先级（候诊中→已叫号→就诊中→已完成 递增）；
+ *   2. 同状态下按就诊时间最近优先（倒序）。
  */
-const filtered = computed(() =>
-  activeTab.value === 'all'
-    ? visits.value
-    : visits.value.filter(v => v.status === activeTab.value)
-)
+const filtered = computed(() => {
+  let list = visits.value
+  // ① 状态 Tab 过滤
+  if (activeTab.value !== 'all') {
+    list = list.filter(v => v.status === activeTab.value)
+  }
+  // ② 姓名模糊搜索（支持部分匹配，如"王"匹配"王五"）
+  const kw = searchName.value.trim().toLowerCase()
+  if (kw) {
+    list = list.filter(v => (v.patientName || '').toLowerCase().includes(kw))
+  }
+  // ③ 就诊日期精确匹配（取就诊日期部分，等于所选日期）
+  if (searchDate.value) {
+    list = list.filter(v => (v.appointmentTime || '').slice(0, 10) === searchDate.value)
+  }
+  // ④ 状态优先 + 时间最近排序
+  const statusOrder = { WAITING: 1, CALLING: 2, IN_PROGRESS: 3, FINISHED: 4 }
+  return [...list].sort((a, b) => {
+    const oa = statusOrder[a.status] ?? 5
+    const ob = statusOrder[b.status] ?? 5
+    if (oa !== ob) return oa - ob
+    return String(b.appointmentTime || '').localeCompare(String(a.appointmentTime || ''))
+  })
+})
+
+/**
+ * 当前页应展示的就诊记录：对 filtered 结果按当前页码切片（每页 6 条）。
+ */
+const pageList = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return filtered.value.slice(start, start + PAGE_SIZE)
+})
+
+/** 翻页（切换 Tab / 搜索后回到第一页） */
+function switchTab(key) {
+  activeTab.value = key
+  currentPage.value = 1
+}
+
+/** 搜索条件变化时回到第一页 */
+function resetPage() {
+  currentPage.value = 1
+}
 
 /**
  * 统计指定 Tab 的数量
@@ -206,12 +265,38 @@ onMounted(loadVisits)
       <el-button plain @click="loadVisits">刷新列表</el-button>
     </div>
 
+    <!-- 搜索栏 -->
+    <div class="search-bar">
+      <el-input
+        v-model="searchName"
+        placeholder="按患者姓名模糊搜索"
+        clearable
+        class="search-name"
+        @input="resetPage"
+        @clear="resetPage"
+      >
+        <template #prefix><el-icon><Search /></el-icon></template>
+      </el-input>
+      <el-date-picker
+        v-model="searchDate"
+        type="date"
+        value-format="YYYY-MM-DD"
+        placeholder="按就诊日期查询"
+        clearable
+        class="search-date"
+        @change="resetPage"
+      />
+      <el-button v-if="searchName || searchDate" text class="clear-btn" @click="clearSearch; resetPage()">
+        清除筛选
+      </el-button>
+    </div>
+
     <!-- 状态筛选 Tab -->
     <div class="tab-row">
       <button
         v-for="t in tabs" :key="t.key"
         :class="['tab-pill', { active: activeTab === t.key }]"
-        @click="activeTab = t.key"
+        @click="switchTab(t.key)"
       >
         {{ t.label }}<span class="tab-count">{{ countOf(t.key) }}</span>
       </button>
@@ -219,7 +304,7 @@ onMounted(loadVisits)
 
     <!-- 就诊卡片列表 -->
     <div class="card-list">
-      <div v-for="v in filtered" :key="v.id" class="visit-card">
+      <div v-for="v in pageList" :key="v.id" class="visit-card">
         <!-- 左：状态徽章 -->
         <div class="status-badge" :class="statusMap[v.status]?.cls || 'st-waiting'">
           <span class="sb-icon">
@@ -264,6 +349,18 @@ onMounted(loadVisits)
           </el-button>
         </div>
       </div>
+    </div>
+
+    <!-- 分页（每满 6 条换页） -->
+    <div v-if="filtered.length > PAGE_SIZE" class="pager">
+      <el-pagination
+        background
+        layout="prev, pager, next"
+        :total="filtered.length"
+        :page-size="PAGE_SIZE"
+        :current-page="currentPage"
+        @current-change="currentPage = $event"
+      />
     </div>
 
     <!-- 空状态 -->
@@ -353,6 +450,11 @@ onMounted(loadVisits)
 .page-sub { font-size: 13px; color: #8492A6; margin: 0; }
 
 /* Tab */
+.search-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.search-name { width: 260px; }
+.search-date { width: 200px; }
+.clear-btn { color: #8492A6; }
+
 .tab-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .tab-pill {
   border: 1.5px solid #E2EAF4; background: #fff; color: #5A6B82; border-radius: 100px;
@@ -402,6 +504,13 @@ onMounted(loadVisits)
 
 /* 右侧操作 */
 .visit-actions { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 8px; flex-shrink: 0; }
+
+/* 分页 */
+.pager { display: flex; justify-content: center; margin-top: 20px; }
+.pager :deep(.el-pagination.is-background .el-pager li.is-active) {
+  background: linear-gradient(135deg, #10B981, #3FC79A);
+  border-color: transparent;
+}
 
 /* 空状态 */
 .empty-state { text-align: center; padding: 50px 0 30px; }

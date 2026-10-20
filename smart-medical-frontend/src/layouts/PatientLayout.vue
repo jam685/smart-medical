@@ -7,6 +7,7 @@ import AppLogo from '@/components/AppLogo.vue'
 import {
   HomeFilled,
   User,
+  MagicStick,
   Tickets,
   Timer,
   FolderOpened,
@@ -22,6 +23,8 @@ const activeMenu = computed(() => route.path)
 const menus = [
   { path: '/patient/home', title: '首页', icon: HomeFilled },
   { path: '/patient/profile', title: '个人信息', icon: User },
+  // 智能预问诊：AI 预问诊入口（/patient/ai-chat），置于「挂号」之前
+  { path: '/patient/ai-chat', title: '智能预问诊', icon: MagicStick },
   { path: '/patient/appointments', title: '挂号', icon: Tickets },
   { path: '/patient/visits', title: '就诊进度', icon: Timer },
   { path: '/patient/reports', title: '我的报告', icon: FolderOpened },

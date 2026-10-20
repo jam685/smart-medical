@@ -4,17 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.result.PageResult;
 import com.hospital.smartmedical.module.admin.entity.AuditLog;
-import com.hospital.smartmedical.module.admin.entity.SensitiveContent;
 import com.hospital.smartmedical.module.admin.mapper.AuditLogMapper;
-import com.hospital.smartmedical.module.admin.mapper.SensitiveContentMapper;
 import com.hospital.smartmedical.module.appointment.entity.Appointment;
 import com.hospital.smartmedical.module.appointment.mapper.AppointmentMapper;
 import com.hospital.smartmedical.module.appointment.vo.AppointmentVO;
 import com.hospital.smartmedical.module.appointment.service.AppointmentService;
 import com.hospital.smartmedical.module.doctor.entity.Doctor;
 import com.hospital.smartmedical.module.doctor.mapper.DoctorMapper;
-import com.hospital.smartmedical.module.onlineconsult.entity.OnlineConsult;
-import com.hospital.smartmedical.module.onlineconsult.mapper.OnlineConsultMapper;
+import com.hospital.smartmedical.module.onlineconsult.entity.OnlineConsultRecord;
+import com.hospital.smartmedical.module.onlineconsult.mapper.OnlineConsultRecordMapper;
 import com.hospital.smartmedical.module.patient.entity.Patient;
 import com.hospital.smartmedical.module.patient.mapper.PatientMapper;
 import com.hospital.smartmedical.module.admin.entity.Admin;
@@ -61,12 +59,10 @@ public class StatsServiceImpl implements StatsService {
     private final PrescriptionMapper prescriptionMapper;
     /** 报告表 Mapper（统计患者报告总数） */
     private final ReportMapper reportMapper;
-    /** 在线问诊表 Mapper（统计待处理问诊） */
-    private final OnlineConsultMapper onlineConsultMapper;
+    /** 在线问诊记录表 Mapper（统计待处理问诊） */
+    private final OnlineConsultRecordMapper onlineConsultMapper;
     /** 审计日志 Mapper（统计今日审计 + 取最新 5 条） */
     private final AuditLogMapper auditLogMapper;
-    /** 敏感内容 Mapper（统计待审核数） */
-    private final SensitiveContentMapper sensitiveContentMapper;
     /** 挂号业务服务（复用 listAppointments 取即将到来列表） */
     private final AppointmentService appointmentService;
     /** 就诊业务服务（复用 listVisits 取今日接诊列表） */
@@ -101,7 +97,7 @@ public class StatsServiceImpl implements StatsService {
         s.setReports(reportMapper.selectCount(
                 new LambdaQueryWrapper<Report>().eq(Report::getPatientId, userId)));
         s.setConsults(onlineConsultMapper.selectCount(
-                new LambdaQueryWrapper<OnlineConsult>().eq(OnlineConsult::getPatientId, userId)));
+                new LambdaQueryWrapper<OnlineConsultRecord>().eq(OnlineConsultRecord::getPatientId, userId)));
         s.setVisits(visitMapper.selectCount(
                 new LambdaQueryWrapper<Visit>().eq(Visit::getPatientId, userId)));
         dash.setStats(s);
@@ -161,9 +157,9 @@ public class StatsServiceImpl implements StatsService {
         s.setTotalPrescriptions(prescriptionMapper.selectCount(
                 new LambdaQueryWrapper<Prescription>().eq(Prescription::getDoctorId, userId)));
         s.setPendingConsults(onlineConsultMapper.selectCount(
-                new LambdaQueryWrapper<OnlineConsult>()
-                        .eq(OnlineConsult::getDoctorId, userId)
-                        .eq(OnlineConsult::getStatus, "PENDING")));
+                new LambdaQueryWrapper<OnlineConsultRecord>()
+                        .eq(OnlineConsultRecord::getDoctorId, userId)
+                        .eq(OnlineConsultRecord::getStatus, "PENDING")));
         dash.setStats(s);
 
         // 今日接诊列表：复用既有分页接口取前 5 条
@@ -205,10 +201,9 @@ public class StatsServiceImpl implements StatsService {
                         .ge(Visit::getCreatedAt, dayStart)
                         .lt(Visit::getCreatedAt, dayEnd)));
         s.setPendingConsults(onlineConsultMapper.selectCount(
-                new LambdaQueryWrapper<OnlineConsult>().eq(OnlineConsult::getStatus, "PENDING")));
-        s.setSensitivePending(sensitiveContentMapper.selectCount(
-                new LambdaQueryWrapper<SensitiveContent>()
-                        .eq(SensitiveContent::getReviewStatus, "PENDING")));
+                new LambdaQueryWrapper<OnlineConsultRecord>().eq(OnlineConsultRecord::getStatus, "PENDING")));
+        // 敏感内容表已随 V1.3 删除，待审核敏感内容数置 0
+        s.setSensitivePending(0L);
         s.setTodayAuditLogs(auditLogMapper.selectCount(
                 new LambdaQueryWrapper<AuditLog>()
                         .ge(AuditLog::getCreatedAt, dayStart)

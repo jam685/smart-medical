@@ -68,6 +68,18 @@ public class PrescriptionController {
     }
 
     /**
+     * 查询当前患者本人的处方列表（患者端"我的报告-处方报告"使用）
+     *
+     * @param request HTTP 请求（注入当前患者 ID）
+     * @return 处方 VO 列表（按处方编号分组，含药品明细）
+     */
+    @GetMapping("/patient/me")
+    public Result<List<PrescriptionVO>> myPatientPrescriptions(HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("currentUserId");
+        return Result.ok(prescriptionService.listByPatient(userId));
+    }
+
+    /**
      * 开具处方请求体
      */
     @Data

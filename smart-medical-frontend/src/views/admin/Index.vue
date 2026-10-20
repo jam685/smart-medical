@@ -120,20 +120,10 @@
               <div class="m-icon mi-purple"><svg viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 1 1 16.1-3.8z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
               <div class="m-text">
                 <strong>待处理在线问诊</strong>
-                <span>sm_online_consult status=PENDING</span>
+                <span>sm_online_consult_record status=PENDING</span>
               </div>
             </div>
             <div class="m-num">{{ stats.pendingConsults }}</div>
-          </div>
-          <div class="metric-row">
-            <div class="m-left">
-              <div class="m-icon mi-red"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
-              <div class="m-text">
-                <strong>待审核敏感内容</strong>
-                <span>sm_sensitive_content review_status=PENDING</span>
-              </div>
-            </div>
-            <div class="m-num">{{ stats.sensitivePending }}</div>
           </div>
           <div class="metric-row">
             <div class="m-left">

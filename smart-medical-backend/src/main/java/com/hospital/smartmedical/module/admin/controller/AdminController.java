@@ -56,8 +56,9 @@ public class AdminController {
     @GetMapping("/users")
     public Result<PageResult<?>> users(@RequestParam String role,
                                         @RequestParam(defaultValue = "1") int page,
-                                        @RequestParam(defaultValue = "10") int size) {
-        return Result.ok(adminService.getUsersByRole(role, page, size));
+                                        @RequestParam(defaultValue = "10") int size,
+                                        @RequestParam(required = false) String keyword) {
+        return Result.ok(adminService.getUsersByRole(role, page, size, keyword));
     }
 
     @PutMapping("/users/{id}/status")
@@ -102,9 +103,20 @@ public class AdminController {
         return Result.ok(adminService.getAuditLogs(page, size, role, action));
     }
 
-    @GetMapping("/knowledge-base")
-    public Result<Object> knowledgeBase() {
-        return Result.ok(adminService.getAllKnowledgeBases());
+    /**
+     * 审核一条审计日志（通过/驳回）
+     * @param id   审计日志ID
+     * @param body 请求体，含 decision（APPROVED 通过 / REJECTED 驳回，驳回自动禁用操作人账号）
+     * @return 空结果
+     */
+    @PutMapping("/audit-logs/{id}/review")
+    public Result<Void> reviewAuditLog(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String decision = body.get("decision");
+        if (decision == null || decision.trim().isEmpty()) {
+            return Result.fail(400, "缺少 decision 参数");
+        }
+        adminService.reviewAuditLog(id, decision);
+        return Result.ok();
     }
 
     @GetMapping("/model-configs")
@@ -115,10 +127,5 @@ public class AdminController {
     @GetMapping("/data-quality")
     public Result<Object> dataQuality() {
         return Result.ok(adminService.getDataQuality());
-    }
-
-    @GetMapping("/sensitive-contents")
-    public Result<Object> sensitiveContents(@RequestParam(required = false, defaultValue = "PENDING") String status) {
-        return Result.ok(adminService.getSensitiveContents(status));
     }
 }

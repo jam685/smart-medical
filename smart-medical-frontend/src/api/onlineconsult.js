@@ -1,17 +1,27 @@
 /**
  * 线上面诊业务接口模块
  * 对应后端 OnlineConsultController（前缀 /online-consults）：
- *   GET  /online-doctors            在线医生列表（脱敏视图，不含密码）
- *   POST /                          发起问诊
- *   GET  /                          问诊分页列表（按角色过滤）
- *   GET  /{id}                      问诊详情（含医生、患者脱敏信息）
- *   POST /{id}/messages             发送消息（患者补充描述）
- *   GET  /{id}/messages             消息记录（按时间正序）
- *   POST /{id}/confirm-reply        医生确认回复（写入消息流）
- *   POST /{id}/close                关闭问诊
+ *   GET  /my-doctors                  我的挂号主治医生列表（问诊发起专用，按有效挂号派生）
+ *   GET  /online-doctors              在线医生列表（脱敏视图，不含密码）
+ *   POST /                            发起问诊
+ *   GET  /                            问诊分页列表（按角色过滤）
+ *   GET  /{id}                        问诊详情（含医生、患者脱敏信息）
+ *   POST /{id}/messages               发送消息（患者补充描述）
+ *   GET  /{id}/messages               消息记录（按时间正序）
+ *   POST /{id}/confirm-reply          医生确认回复（写入消息流）
+ *   POST /{id}/close                  关闭问诊
  *   GET  /{id}/supplement-records   补充材料记录与次数
  */
 import request from './request'
+
+/**
+ * 查询患者自己的「挂号主治医生」列表（发起问诊时选择医生用）
+ * 业务规则：患者只能对自己挂号成功（挂号状态非 CANCELLED）的主治医生发起在线问诊。
+ * @returns {Promise<Array>} 医生数组：{id, employeeNo, realName, gender, title, department, avatar, bio, onlineStatus}
+ */
+export function fetchMyDoctors() {
+  return request.get('/online-consults/my-doctors')
+}
 
 /**
  * 查询在线医生列表（患者发起问诊时选择医生用；仅返回 onlineStatus=ONLINE 的医生）
@@ -67,6 +77,20 @@ export function fetchConsultDetail(id) {
  */
 export function sendConsultMessage(id, payload) {
   return request.post(`/online-consults/${id}/messages`, payload)
+}
+
+/**
+ * 上传聊天图片（患者/医生均可，任意路径的图片文件）
+ * 后端仅保存文件到 uploads/chat/，不写入报告表；返回 imageUrl 后前端以 IMAGE 消息发送。
+ * @param {File} file 图片文件（jpg/jpeg/png/webp/gif）
+ * @returns {Promise<object>} {imageUrl}
+ */
+export function uploadChatImage(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return request.post('/online-consults/upload-image', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 /**

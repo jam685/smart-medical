@@ -27,6 +27,7 @@ const menus = [
   { path: '/admin/roles', title: '角色权限', icon: Lock },
   { path: '/admin/audit-logs', title: '审计日志', icon: Tickets },
   { path: '/admin/knowledge-base', title: '知识库', icon: Notebook },
+  { path: '/admin/prompt-templates', title: '提示词模板', icon: Tickets },
   { path: '/admin/model-configs', title: '模型配置', icon: Cpu },
   { path: '/admin/data-quality', title: '数据质量', icon: Monitor },
   { path: '/admin/sensitive-review', title: '敏感审核', icon: Warning },

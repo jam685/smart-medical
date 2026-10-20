@@ -1,23 +1,27 @@
 package com.hospital.smartmedical.module.prescription.vo;
 
 import com.hospital.smartmedical.module.prescription.entity.Prescription;
-import com.hospital.smartmedical.module.prescription.entity.PrescriptionItem;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 处方详情 VO（主表 + 药品明细 + 患者/医生姓名）
- * 供医生接诊工作台、患者处方查看等场景使用。
+ * 处方详情 VO（按 prescription_no 分组：表头信息 + 药品明细列表）。
+ *
+ * <p>sm_prescription 在 V1.3 与明细合并，同一 prescription_no 的多行记录即一份处方的多个
+ * 药品明细。本 VO 将一组同编号记录聚合为「表头字段 + items 明细列表」，供接诊工作台与
+ * 患者处方查看使用。</p>
  */
 @Data
 public class PrescriptionVO {
 
-    /** 处方 ID */
+    /** 处方 ID（取该组首行记录 ID） */
     private Long id;
+
+    /** 处方编号（分组） */
+    private String prescriptionNo;
 
     /** 关联就诊进度 ID */
     private Long visitId;
@@ -56,11 +60,11 @@ public class PrescriptionVO {
     private LocalDateTime createdAt;
 
     /**
-     * 处方明细 VO
+     * 处方药品明细 VO。
      */
     @Data
     public static class Item {
-        /** 明细 ID */
+        /** 明细行 ID */
         private Long id;
         /** 药品名称 */
         private String drugName;
@@ -81,46 +85,48 @@ public class PrescriptionVO {
     }
 
     /**
-     * 由处方主表 + 明细列表 + 姓名组装 VO
+     * 由同一 prescription_no 的一组处方行记录（含表头）组装 VO。
      *
-     * @param p           处方主表实体
-     * @param items       明细列表（可空）
+     * @param rows        同一处方编号的多行记录（每行对应一个药品明细）
      * @param patientName 患者姓名（可空）
      * @param doctorName  医生姓名（可空）
-     * @return 处方 VO
+     * @return 处方 VO；rows 为空时返回 null
      */
-    public static PrescriptionVO of(Prescription p, List<PrescriptionItem> items,
-                                    String patientName, String doctorName) {
+    public static PrescriptionVO of(List<Prescription> rows, String patientName, String doctorName) {
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        Prescription head = rows.get(0);
         PrescriptionVO vo = new PrescriptionVO();
-        vo.setId(p.getId());
-        vo.setVisitId(p.getVisitId());
-        vo.setAppointmentId(p.getAppointmentId());
-        vo.setPatientId(p.getPatientId());
+        vo.setId(head.getId());
+        vo.setPrescriptionNo(head.getPrescriptionNo());
+        vo.setVisitId(head.getVisitId());
+        vo.setAppointmentId(head.getAppointmentId());
+        vo.setPatientId(head.getPatientId());
         vo.setPatientName(patientName);
-        vo.setDoctorId(p.getDoctorId());
+        vo.setDoctorId(head.getDoctorId());
         vo.setDoctorName(doctorName);
-        vo.setDepartment(p.getDepartment());
-        vo.setDiagnosis(p.getDiagnosis());
-        vo.setAdvice(p.getAdvice());
-        vo.setStatus(p.getStatus());
-        vo.setCreatedAt(p.getCreatedAt());
-        vo.setItems(items == null ? Collections.emptyList()
-                : items.stream().map(PrescriptionVO::toItem).collect(Collectors.toList()));
+        vo.setDepartment(head.getDepartment());
+        vo.setDiagnosis(head.getDiagnosis());
+        vo.setAdvice(head.getAdvice());
+        vo.setStatus(head.getStatus());
+        vo.setCreatedAt(head.getCreatedAt());
+        vo.setItems(rows.stream().map(PrescriptionVO::toItem).collect(Collectors.toList()));
         return vo;
     }
 
-    /** 明细实体转 VO */
-    private static Item toItem(PrescriptionItem it) {
+    /** 处方行记录转明细 VO */
+    private static Item toItem(Prescription r) {
         Item i = new Item();
-        i.setId(it.getId());
-        i.setDrugName(it.getDrugName());
-        i.setSpecification(it.getSpecification());
-        i.setDosage(it.getDosage());
-        i.setFrequency(it.getFrequency());
-        i.setDays(it.getDays());
-        i.setQuantity(it.getQuantity());
-        i.setUsageMethod(it.getUsageMethod());
-        i.setRemark(it.getRemark());
+        i.setId(r.getId());
+        i.setDrugName(r.getDrugName());
+        i.setSpecification(r.getSpecification());
+        i.setDosage(r.getDosage());
+        i.setFrequency(r.getFrequency());
+        i.setDays(r.getDays());
+        i.setQuantity(r.getQuantity());
+        i.setUsageMethod(r.getUsageMethod());
+        i.setRemark(r.getRemark());
         return i;
     }
 }

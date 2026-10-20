@@ -23,7 +23,8 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     // 白名单路径（无需认证）
     private static final List<String> WHITELIST = Arrays.asList(
-            "/patients/login", "/patients/logout",
+            "/patients/login", "/patients/logout", "/patients/register",
+            "/patients/password-reset", "/patients/password-reset/code",
             "/doctors/login", "/doctors/logout",
             "/admin/login", "/admin/logout"
     );

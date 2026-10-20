@@ -1,16 +1,18 @@
 <script setup>
 /**
  * 患者端「发起问诊」页组件
- * 职责：引导患者 ①选择在线医生 ②填写主诉与病情描述 ③提交创建问诊。
+ * 职责：引导患者 ①选择自己的挂号主治医生 ②填写主诉与病情描述 ③提交创建问诊。
+ * 业务规则：患者只能对自己挂号成功（挂号状态非 CANCELLED）的主治医生发起在线问诊，
+ * 医生列表由后端根据挂号记录派生（GET /online-consults/my-doctors）。
  * 数据来源（真实接口）：
- *   GET  /online-consults/online-doctors  在线医生列表（科室由医生所属科室去重派生）
- *   POST /online-consults                  创建问诊（写 sm_online_consult + 系统消息）
+ *   GET  /online-consults/my-doctors  我的挂号主治医生列表（科室由医生所属科室去重派生）
+ *   POST /online-consults             创建问诊（写 sm_online_consult_record + 系统消息）
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Check } from '@element-plus/icons-vue'
-import { fetchOnlineDoctors, createConsult } from '@/api/onlineconsult'
+import { fetchMyDoctors, createConsult } from '@/api/onlineconsult'
 
 /** 路由实例：用于返回列表、提交成功后跳转聊天页 */
 const router = useRouter()
@@ -21,7 +23,7 @@ const doctorLoading = ref(false)
 const submitting = ref(false)
 
 /**
- * 后端返回的全部在线医生原始数组
+ * 后端返回的「我的挂号主治医生」原始数组
  * 单项字段：{id, employeeNo, realName, gender, title, department, avatar, bio, onlineStatus}
  */
 const allDoctors = ref([])
@@ -35,7 +37,7 @@ const selectedDoctor = ref(null)
 const form = ref({ chiefComplaint: '', description: '' })
 
 /**
- * 科室列表（响应式）：对在线医生按 department 去重派生，最前加「全部」
+ * 科室列表（响应式）：对主治医生按 department 去重派生，最前加「全部」
  */
 const departments = computed(() => {
   const set = new Set()
@@ -84,7 +86,7 @@ function goBack() { router.push('/patient/online-consults') }
  */
 async function submit() {
   if (!selectedDoctor.value) {
-    ElMessage.warning('请先选择一位在线医生')
+    ElMessage.warning('请先选择一位您挂号的主治医生')
     return
   }
   if (!form.value.chiefComplaint.trim()) {
@@ -103,17 +105,17 @@ async function submit() {
     ElMessage.success('问诊已发起，等待医生接诊')
     router.push(`/patient/online-consults/${consult.id}`)
   } catch (e) {
-    // 失败提示由请求拦截器统一处理（如医生不在线）
+    // 失败提示由请求拦截器统一处理（如医生不在线、非主治医生）
   } finally {
     submitting.value = false
   }
 }
 
-/** 页面加载时请求在线医生（科室列表由其去重派生） */
+/** 页面加载时请求我的挂号主治医生（科室列表由其去重派生） */
 onMounted(async () => {
   doctorLoading.value = true
   try {
-    allDoctors.value = await fetchOnlineDoctors()
+    allDoctors.value = await fetchMyDoctors()
   } catch (e) {
     // 错误提示由请求拦截器统一处理
   } finally {
@@ -134,8 +136,8 @@ onMounted(async () => {
     </div>
 
     <!-- 选择医生 -->
-    <p class="panel-hint">1. 选择在线医生</p>
-    <div class="dept-chips">
+    <p class="panel-hint">1. 选择您挂号的主治医生</p>
+    <div v-if="departments.length > 1" class="dept-chips">
       <button
         v-for="d in departments" :key="d"
         :class="['dept-chip', { active: selectedDept === d }]"
@@ -163,7 +165,7 @@ onMounted(async () => {
           <div class="doc-id-line">
             <span class="doc-id-tag">工号 {{ doc.employeeNo }}</span>
             <span class="doc-dept-tag">{{ doc.department }}</span>
-            <span class="doc-online"><i class="online-dot-sm"></i>在线可问诊</span>
+            <span class="doc-online"><i class="online-dot-sm"></i>挂号主治医生</span>
           </div>
           <p class="doc-bio" v-if="doc.bio">{{ doc.bio }}</p>
           <p class="doc-bio empty" v-else>暂无简介</p>
@@ -171,7 +173,8 @@ onMounted(async () => {
         <span v-if="selectedDoctor?.id === doc.id" class="doc-check"><el-icon><Check /></el-icon></span>
       </div>
       <div v-if="!doctorLoading && doctorsOfDept.length === 0" class="no-doctor">
-        当前科室暂无在线医生，请选择其他科室
+        您还没有挂号成功的主治医生，无法发起在线问诊。<br/>
+        请先到「挂号」页预约医生，挂号成功后再回来发起问诊。
       </div>
     </div>
 

@@ -1,23 +1,28 @@
-# ---------- 编译产物 ----------
+# Java / Maven
 target/
 *.class
 *.jar
 *.war
 
-# ---------- 前端依赖与构建 ----------
+# Node / 前端构建
 node_modules/
 dist/
 
-# ---------- 运行时上传/日志 ----------
-uploads/
-logs/
-*.log
-
-# ---------- IDE ----------
+# IDE 配置
 .idea/
 *.iml
 .vscode/
 
-# ---------- 系统 ----------
+# 运行时产物与日志
+uploads/
+*.log
+
+# 浏览器自动化验证产物
+.browser-verify/
+
+# Trae 内部配置与文档
+.trae/
+
+# 操作系统文件
 .DS_Store
 Thumbs.db

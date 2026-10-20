@@ -23,13 +23,13 @@ public class ConsultMessage implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 问诊 ID（sm_online_consult.id） */
+    /** 问诊 ID（sm_online_consult_record.id） */
     private Long consultId;
 
     /** 发送方：PATIENT / DOCTOR / SYSTEM */
     private String sender;
 
-    /** 消息类型：TEXT / IMAGE / SYSTEM */
+    /** 消息类型：TEXT / IMAGE */
     private String messageType;
 
     /** 文本内容 */
@@ -37,9 +37,6 @@ public class ConsultMessage implements Serializable {
 
     /** 图片地址（图片消息时使用） */
     private String imageUrl;
-
-    /** 敏感标记：0 正常 / 1 命中敏感词 */
-    private Integer sensitiveFlag;
 
     /** 创建时间 */
     private LocalDateTime createdAt;

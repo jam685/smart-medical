@@ -21,22 +21,14 @@ public class AuditLog implements Serializable {
 
     private String action;
 
-    private String targetType;
-
     private Long targetId;
 
     private String detail;
 
-    private String ip;
+    /** 敏感等级 */
+    private String sensitiveLevel;
 
-    private String userAgent;
-
-    private String sensitiveType;
-
-    private Integer sensitiveLevel;
-
-    private String actionTaken;
-
+    /** 审核状态 */
     private String reviewStatus;
 
     private LocalDateTime createdAt;

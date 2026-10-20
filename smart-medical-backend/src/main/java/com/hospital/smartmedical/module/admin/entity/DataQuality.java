@@ -16,9 +16,9 @@ public class DataQuality implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private Long dataCount;
+    private Integer dataCount;
 
-    private Long labeledCount;
+    private Integer labeledCount;
 
     private BigDecimal missingRate;
 
