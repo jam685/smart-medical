@@ -23,7 +23,30 @@
         <jjwt.version>0.12.6</jjwt.version>
         <caffeine.version>3.1.8</caffeine.version>
         <lombok.version>1.18.38</lombok.version>
+        <!-- AI 多智能体：LangGraph4j 状态图编排 + LangChain4j 大模型调用 -->
+        <langgraph4j.version>1.9.6</langgraph4j.version>
+        <langchain4j.version>1.22.0</langchain4j.version>
     </properties>
+
+    <!-- 依赖版本统一管理（BOM） -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.bsc.langgraph4j</groupId>
+                <artifactId>langgraph4j-bom</artifactId>
+                <version>${langgraph4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j-bom</artifactId>
+                <version>${langchain4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- Web -->
@@ -81,6 +104,38 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+
+        <!-- LangGraph4j：AI 多智能体状态图编排 -->
+        <dependency>
+            <groupId>org.bsc.langgraph4j</groupId>
+            <artifactId>langgraph4j-core</artifactId>
+        </dependency>
+
+        <!-- LangChain4j：大模型调用（对话/多模态/结构化输出） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+        </dependency>
+        <!-- LangChain4j 本地向量模型 BGE-small-zh-v1.5（中文语义检索：医生科室推荐知识库 RAG） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-embeddings-bge-small-zh-v15</artifactId>
+        </dependency>
+        <!-- LangChain4j Milvus 向量库（科室介绍库向量持久化存储与检索，替换内存 InMemoryEmbeddingStore） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-milvus</artifactId>
+        </dependency>
+
+        <!-- Redis：AI 会话 MedicalGraphState 持久化（ai.state-store=redis 时启用） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
         <!-- Lombok -->

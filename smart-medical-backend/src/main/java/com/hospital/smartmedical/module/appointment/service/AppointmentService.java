@@ -5,7 +5,9 @@ import com.hospital.smartmedical.common.result.PageResult;
 import com.hospital.smartmedical.module.appointment.entity.Appointment;
 import com.hospital.smartmedical.module.appointment.vo.AppointmentVO;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +25,24 @@ public interface AppointmentService {
      * @return 医生信息 Map 列表（含 id、姓名、科室、职称、在线状态、挂号费）
      */
     List<Map<String, Object>> listAvailableDoctors(String department, String keyword);
+
+    /**
+     * 批量查询可挂号医生（按科室集合一次查询，避免逐个科室循环查询造成 N+1）
+     *
+     * @param departments 科室名集合（可空/空集合，空则查询全部在线医生）
+     * @return 医生信息 Map 列表（含 id、姓名、科室、职称、在线状态、挂号费）
+     */
+    List<Map<String, Object>> listAvailableDoctorsByDepts(Collection<String> departments);
+
+    /**
+     * 校验是否已存在同一患者同一医生同一天的有效挂号（重复挂号拦截）。
+     *
+     * @param patientId 患者 ID
+     * @param doctorId  医生 ID
+     * @param date      就诊日期
+     * @return true=已存在有效挂号（状态非 CANCELLED），false=可正常挂号
+     */
+    boolean hasAppointmentOnDate(Long patientId, Long doctorId, LocalDate date);
 
     /**
      * 创建挂号，同时自动创建就诊进度 Visit

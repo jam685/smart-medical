@@ -4,6 +4,7 @@ import com.hospital.smartmedical.common.result.PageResult;
 import com.hospital.smartmedical.common.result.Result;
 import com.hospital.smartmedical.module.admin.dto.AdminUserRequest;
 import com.hospital.smartmedical.module.admin.entity.Admin;
+import com.hospital.smartmedical.module.admin.entity.ModelConfig;
 import com.hospital.smartmedical.module.admin.service.AdminService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -119,9 +120,45 @@ public class AdminController {
         return Result.ok();
     }
 
+    /**
+     * 模型配置列表（sm_model_config 表全量，前端表格直接映射字段）
+     */
     @GetMapping("/model-configs")
     public Result<Object> modelConfigs() {
         return Result.ok(adminService.getAllModelConfigs());
+    }
+
+    /**
+     * 当前生效的聊天模型（含配置来源：数据库 / 配置文件），用于页面顶部「生效中」展示
+     */
+    @GetMapping("/model-configs/active")
+    public Result<Map<String, Object>> activeModelConfig() {
+        return Result.ok(adminService.getActiveModelInfo());
+    }
+
+    /**
+     * 新增模型配置（保存后热更新生效）
+     */
+    @PostMapping("/model-configs")
+    public Result<ModelConfig> createModelConfig(@RequestBody ModelConfig config) {
+        return Result.ok(adminService.createModelConfig(config));
+    }
+
+    /**
+     * 修改模型配置（保存后热更新生效）
+     */
+    @PutMapping("/model-configs/{id}")
+    public Result<ModelConfig> updateModelConfig(@PathVariable Long id, @RequestBody ModelConfig config) {
+        return Result.ok(adminService.updateModelConfig(id, config));
+    }
+
+    /**
+     * 删除模型配置（删除后热更新生效）
+     */
+    @DeleteMapping("/model-configs/{id}")
+    public Result<Void> deleteModelConfig(@PathVariable Long id) {
+        adminService.deleteModelConfig(id);
+        return Result.ok();
     }
 
     @GetMapping("/data-quality")

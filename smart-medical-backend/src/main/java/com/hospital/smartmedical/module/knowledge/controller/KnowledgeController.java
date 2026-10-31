@@ -36,6 +36,20 @@ public class KnowledgeController {
         return Result.ok(knowledgeService.createBase(base));
     }
 
+    /** 更新医学知识库（名称/类型/说明/状态），变更后自动重建科室介绍库向量索引（热更新）。 */
+    @PutMapping("/bases/{id}")
+    public Result<Void> updateBase(@PathVariable Long id, @RequestBody MedicalKnowledgeBase base) {
+        knowledgeService.updateBase(id, base);
+        return Result.ok();
+    }
+
+    /** 删除医学知识库（级联删除其下文档、片段与向量索引记录），删除后自动重建向量索引。 */
+    @DeleteMapping("/bases/{id}")
+    public Result<Void> deleteBase(@PathVariable Long id) {
+        knowledgeService.deleteBase(id);
+        return Result.ok();
+    }
+
     /** 知识文档列表（KB-03）。 */
     @GetMapping("/documents")
     public Result<List<KnowledgeDocument>> listDocuments(
@@ -49,10 +63,44 @@ public class KnowledgeController {
         return Result.ok(knowledgeService.createDocument(document));
     }
 
+    /** 更新知识文档，变更后自动重建科室介绍库向量索引（热更新）。 */
+    @PutMapping("/documents/{id}")
+    public Result<Void> updateDocument(@PathVariable Long id, @RequestBody KnowledgeDocument document) {
+        knowledgeService.updateDocument(id, document);
+        return Result.ok();
+    }
+
+    /** 删除知识文档（级联删除其下片段与向量索引记录），删除后自动重建向量索引。 */
+    @DeleteMapping("/documents/{id}")
+    public Result<Void> deleteDocument(@PathVariable Long id) {
+        knowledgeService.deleteDocument(id);
+        return Result.ok();
+    }
+
     /** 知识片段列表（KB-05）。 */
     @GetMapping("/chunks")
     public Result<List<KnowledgeChunk>> listChunks(@RequestParam(required = false) Long documentId) {
         return Result.ok(knowledgeService.listChunks(documentId));
+    }
+
+    /** 新增知识片段，自动重建科室介绍库向量索引（热更新）。 */
+    @PostMapping("/chunks")
+    public Result<KnowledgeChunk> createChunk(@RequestBody KnowledgeChunk chunk) {
+        return Result.ok(knowledgeService.createChunk(chunk));
+    }
+
+    /** 更新知识片段，自动重建科室介绍库向量索引（热更新）。 */
+    @PutMapping("/chunks/{id}")
+    public Result<Void> updateChunk(@PathVariable Long id, @RequestBody KnowledgeChunk chunk) {
+        knowledgeService.updateChunk(id, chunk);
+        return Result.ok();
+    }
+
+    /** 删除知识片段，自动重建科室介绍库向量索引（热更新）。 */
+    @DeleteMapping("/chunks/{id}")
+    public Result<Void> deleteChunk(@PathVariable Long id) {
+        knowledgeService.deleteChunk(id);
+        return Result.ok();
     }
 
     /** 向量化检索记录列表（KB-06）。 */

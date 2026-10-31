@@ -32,7 +32,7 @@ public class AuthInterceptor implements HandlerInterceptor {
     // 角色特定路径前缀映射
     private static final List<String> ADMIN_PATHS = Arrays.asList("/admin/");
     private static final List<String> DOCTOR_PATHS = Arrays.asList("/doctors/", "/online-consults/", "/medical-notes/", "/ai/clinical-analysis", "/ai/examination-suggestions", "/ai/reply-drafts", "/ai/image-analysis");
-    private static final List<String> PATIENT_PATHS = Arrays.asList("/patients/", "/appointments/", "/reports/");
+    private static final List<String> PATIENT_PATHS = Arrays.asList("/patients/", "/appointments/", "/reports/", "/ai/patient-chat");
 
     public static final String ATTR_USER_ID = "currentUserId";
     public static final String ATTR_USER_ROLE = "currentUserRole";

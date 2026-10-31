@@ -7,6 +7,7 @@ import com.hospital.smartmedical.common.exception.BizException;
 import com.hospital.smartmedical.common.result.PageResult;
 import com.hospital.smartmedical.common.security.JwtUtil;
 import com.hospital.smartmedical.module.admin.dto.AdminUserRequest;
+import com.hospital.smartmedical.module.ai.agent.config.AiModelConfigProvider;
 import com.hospital.smartmedical.module.admin.entity.*;
 import com.hospital.smartmedical.module.admin.mapper.*;
 import com.hospital.smartmedical.module.admin.service.AdminService;
@@ -33,6 +34,9 @@ public class AdminServiceImpl implements AdminService {
     private final ModelConfigMapper modelConfigMapper;
     private final DataQualityMapper dataQualityMapper;
     private final JwtUtil jwtUtil;
+
+    /** 模型配置提供者：管理端修改配置后使其缓存失效，实现热更新 */
+    private final AiModelConfigProvider modelConfigProvider;
 
     /** 新增用户缺省密码 123456 */
     private static final String DEMO_PASSWORD = "123456";
@@ -567,6 +571,119 @@ public class AdminServiceImpl implements AdminService {
         return modelConfigMapper.selectList(
                 new LambdaQueryWrapper<ModelConfig>().orderByDesc(ModelConfig::getId)
         );
+    }
+
+    @Override
+    public ModelConfig createModelConfig(ModelConfig config) {
+        validateModelConfig(config);
+        config.setId(null);
+        if (config.getEnabled() == null) {
+            config.setEnabled(1);
+        }
+        // 同类型仅允许一条启用，保证「当前生效配置」唯一
+        if (config.getEnabled() == 1) {
+            disableOtherEnabled(config.getType(), null);
+        }
+        modelConfigMapper.insert(config);
+        // 热更新：清空提供者缓存，下一次 AI 调用使用新配置
+        modelConfigProvider.invalidate();
+        return config;
+    }
+
+    @Override
+    public ModelConfig updateModelConfig(Long id, ModelConfig config) {
+        ModelConfig old = modelConfigMapper.selectById(id);
+        if (old == null) {
+            throw new BizException("模型配置不存在");
+        }
+        validateModelConfig(config);
+        ModelConfig update = new ModelConfig();
+        update.setId(id);
+        update.setConfigName(config.getConfigName());
+        update.setType(config.getType());
+        update.setProvider(config.getProvider());
+        update.setModelName(config.getModelName());
+        update.setApiUrl(config.getApiUrl());
+        // apiKey 为 null 表示不修改，避免前端未回填时误清空密钥
+        update.setApiKey(config.getApiKey() != null ? config.getApiKey() : old.getApiKey());
+        update.setMaxTokens(config.getMaxTokens());
+        update.setRemark(config.getRemark());
+        update.setEnabled(config.getEnabled() != null ? config.getEnabled() : old.getEnabled());
+        if (update.getEnabled() != null && update.getEnabled() == 1) {
+            disableOtherEnabled(update.getType(), id);
+        }
+        modelConfigMapper.updateById(update);
+        modelConfigProvider.invalidate();
+        return modelConfigMapper.selectById(id);
+    }
+
+    @Override
+    public void deleteModelConfig(Long id) {
+        if (modelConfigMapper.selectById(id) == null) {
+            throw new BizException("模型配置不存在");
+        }
+        modelConfigMapper.deleteById(id);
+        modelConfigProvider.invalidate();
+    }
+
+    @Override
+    public Map<String, Object> getActiveModelInfo() {
+        AiModelConfigProvider.ChatModelSpec spec = modelConfigProvider.chatModel();
+        Map<String, Object> info = new LinkedHashMap<>();
+        info.put("configId", spec.getConfigId());
+        info.put("configName", spec.getConfigName());
+        info.put("provider", spec.getProvider());
+        info.put("modelName", spec.getModelName());
+        info.put("apiUrl", spec.getApiUrl());
+        info.put("maxTokens", spec.getMaxTokens());
+        info.put("source", spec.getSource());
+        info.put("apiKeyConfigured", spec.getApiKey() != null && !spec.getApiKey().isBlank());
+        return info;
+    }
+
+    /**
+     * 校验模型配置必填项与类型枚举。
+     *
+     * @param config 模型配置
+     */
+    private void validateModelConfig(ModelConfig config) {
+        if (config == null) {
+            throw new BizException("模型配置不能为空");
+        }
+        if (config.getConfigName() == null || config.getConfigName().isBlank()) {
+            throw new BizException("配置名称不能为空");
+        }
+        if (config.getType() == null || config.getType().isBlank()) {
+            throw new BizException("配置类型不能为空");
+        }
+        if (!"聊天模型".equals(config.getType()) && !"向量模型".equals(config.getType())) {
+            throw new BizException("配置类型只允许：聊天模型 / 向量模型");
+        }
+        if (config.getModelName() == null || config.getModelName().isBlank()) {
+            throw new BizException("模型名称不能为空");
+        }
+        if (config.getApiUrl() == null || config.getApiUrl().isBlank()) {
+            throw new BizException("接口地址不能为空");
+        }
+    }
+
+    /**
+     * 停用同类型的其他配置（保证同一类型只有一条启用，即「唯一生效」）。
+     *
+     * @param type      配置类型
+     * @param excludeId 排除的配置 ID（修改时为自身）
+     */
+    private void disableOtherEnabled(String type, Long excludeId) {
+        List<ModelConfig> others = modelConfigMapper.selectList(new LambdaQueryWrapper<ModelConfig>()
+                .eq(ModelConfig::getType, type)
+                .eq(ModelConfig::getEnabled, 1));
+        for (ModelConfig other : others) {
+            if (excludeId != null && excludeId.equals(other.getId())) {
+                continue;
+            }
+            other.setEnabled(0);
+            modelConfigMapper.updateById(other);
+        }
     }
 
     @Override

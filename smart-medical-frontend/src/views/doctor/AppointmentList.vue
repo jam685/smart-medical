@@ -9,6 +9,7 @@
  *           GET  /prescriptions/by-visit/{id}（查已有处方）
  */
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Remove, Edit, Document, Search } from '@element-plus/icons-vue'
 import { fetchVisits, updateVisitStatus } from '@/api/visit'
@@ -38,15 +39,32 @@ const PAGE_SIZE = 6
 const currentPage = ref(1)
 
 // ============== 搜索 ==============
+/** 路由实例（接收数字医生小林卡片「查看详情」携带的患者/时间筛选参数） */
+const route = useRoute()
 /** 患者姓名关键词（模糊匹配） */
 const searchName = ref('')
-/** 就诊日期（YYYY-MM-DD，匹配当天就诊） */
-const searchDate = ref('')
+/** 就诊日期区间（[开始, 结束]，YYYY-MM-DD，闭区间匹配就诊日期） */
+const searchDateRange = ref(null)
 
 /** 清除搜索条件 */
 function clearSearch() {
   searchName.value = ''
-  searchDate.value = ''
+  searchDateRange.value = null
+}
+
+/**
+ * 应用路由查询参数（从数字医生小林进度卡片跳转时带上患者姓名与查询时间区间）
+ */
+function applyQueryFilter() {
+  const q = route.query
+  if (q.patientName) {
+    searchName.value = String(q.patientName)
+  }
+  if (q.dateFrom && q.dateTo) {
+    searchDateRange.value = [String(q.dateFrom), String(q.dateTo)]
+  } else if (q.dateFrom) {
+    searchDateRange.value = [String(q.dateFrom), String(q.dateFrom)]
+  }
 }
 
 // ============== 接口数据 ==============
@@ -97,9 +115,13 @@ const filtered = computed(() => {
   if (kw) {
     list = list.filter(v => (v.patientName || '').toLowerCase().includes(kw))
   }
-  // ③ 就诊日期精确匹配（取就诊日期部分，等于所选日期）
-  if (searchDate.value) {
-    list = list.filter(v => (v.appointmentTime || '').slice(0, 10) === searchDate.value)
+  // ③ 就诊日期区间匹配（取就诊日期部分，与所选区间做闭区间比较）
+  if (searchDateRange.value && searchDateRange.value.length === 2) {
+    const [from, to] = searchDateRange.value
+    list = list.filter(v => {
+      const d = (v.appointmentTime || '').slice(0, 10)
+      return d && d >= from && d <= to
+    })
   }
   // ④ 状态优先 + 时间最近排序
   const statusOrder = { WAITING: 1, CALLING: 2, IN_PROGRESS: 3, FINISHED: 4 }
@@ -250,8 +272,11 @@ async function submitPrescription() {
   }
 }
 
-// 页面挂载即从后端加载数据
-onMounted(loadVisits)
+// 页面挂载：先应用路由筛选参数（数字医生小林卡片跳转），再加载数据
+onMounted(() => {
+  applyQueryFilter()
+  loadVisits()
+})
 </script>
 
 <template>
@@ -278,15 +303,19 @@ onMounted(loadVisits)
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <el-date-picker
-        v-model="searchDate"
-        type="date"
+        v-model="searchDateRange"
+        type="daterange"
         value-format="YYYY-MM-DD"
-        placeholder="按就诊日期查询"
+        range-separator="至"
+        start-placeholder="开始日期"
+        end-placeholder="结束日期"
+        unlink-panels
+        placeholder="按就诊日期区间查询"
         clearable
         class="search-date"
         @change="resetPage"
       />
-      <el-button v-if="searchName || searchDate" text class="clear-btn" @click="clearSearch; resetPage()">
+      <el-button v-if="searchName || searchDateRange" text class="clear-btn" @click="clearSearch(); resetPage()">
         清除筛选
       </el-button>
     </div>
@@ -452,7 +481,7 @@ onMounted(loadVisits)
 /* Tab */
 .search-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .search-name { width: 260px; }
-.search-date { width: 200px; }
+.search-date { width: 320px; }
 .clear-btn { color: #8492A6; }
 
 .tab-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }

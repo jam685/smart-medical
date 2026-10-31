@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,6 +58,52 @@ public class AppointmentServiceImpl implements AppointmentService {
         qw.orderByAsc(Doctor::getDepartment).orderByAsc(Doctor::getRealName);
 
         List<Doctor> doctors = doctorMapper.selectList(qw);
+        return toDoctorMapList(doctors);
+    }
+
+    /**
+     * 批量查询可挂号医生：按科室集合一次查出全部在线医生，避免 RAG 推荐时逐个科室循环查询的 N+1
+     */
+    @Override
+    public List<Map<String, Object>> listAvailableDoctorsByDepts(Collection<String> departments) {
+        LambdaQueryWrapper<Doctor> qw = new LambdaQueryWrapper<>();
+        qw.eq(Doctor::getOnlineStatus, "ONLINE");
+        if (departments != null && !departments.isEmpty()) {
+            qw.in(Doctor::getDepartment, departments);
+        }
+        qw.orderByAsc(Doctor::getDepartment).orderByAsc(Doctor::getRealName);
+
+        List<Doctor> doctors = doctorMapper.selectList(qw);
+        return toDoctorMapList(doctors);
+    }
+
+    /**
+     * 校验同一患者同一医生同一天是否已存在有效挂号（状态非 CANCELLED），用于 AI 挂号前置拦截重复挂号
+     */
+    @Override
+    public boolean hasAppointmentOnDate(Long patientId, Long doctorId, LocalDate date) {
+        if (patientId == null || doctorId == null || date == null) {
+            return false;
+        }
+        LocalDateTime start = date.atStartOfDay();
+        LocalDateTime end = date.plusDays(1).atStartOfDay();
+        Long count = appointmentMapper.selectCount(
+                new LambdaQueryWrapper<Appointment>()
+                        .eq(Appointment::getPatientId, patientId)
+                        .eq(Appointment::getDoctorId, doctorId)
+                        .ge(Appointment::getAppointmentTime, start)
+                        .lt(Appointment::getAppointmentTime, end)
+                        .ne(Appointment::getStatus, "CANCELLED"));
+        return count != null && count > 0;
+    }
+
+    /**
+     * 医生实体列表 → 前端/AI 可用的医生信息 Map 列表（统一组装字段，避免重复代码）
+     *
+     * @param doctors 医生实体列表
+     * @return 医生信息 Map 列表（含 id、姓名、科室、职称、在线状态、挂号费）
+     */
+    private List<Map<String, Object>> toDoctorMapList(List<Doctor> doctors) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Doctor d : doctors) {
             // 逐项组装前端医生选择卡片所需字段（挂号费由职称档位统一计算）

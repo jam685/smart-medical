@@ -4,6 +4,9 @@ server:
     context-path: /api/smart-medical/v1
 
 spring:
+  # 本地密钥文件（不入版本库）：api-key 等敏感配置放运行目录下 ai-secret.yml
+  config:
+    import: optional:file:./ai-secret.yml
   application:
     name: smart-medical
   datasource:
@@ -27,6 +30,11 @@ spring:
     multipart:
       max-file-size: 5MB
       max-request-size: 5MB
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 5000ms
 
 # 本地文件上传（Demo 头像等，存服务运行目录下 uploads/）
 app:
@@ -56,9 +64,34 @@ caffeine:
   expire-minutes: 30
   max-size: 1000
 
-# AI Demo Config (无FastAPI，本地模拟)
+# AI  Config (真实大模型：DeepSeek OpenAI 兼容接口)
 ai:
-  mock-mode: true
+  # true=本地规则模拟回复（开发演示用，不发外部请求）；false=调用真实大模型（需配置 ai.llm）
+  mock-mode: false
+  # 会话 State 存储：memory=内存（默认，无 Redis 也可运行）/ redis=Redis 持久化（需本机 Redis 已启动）
+  state-store: memory
+  llm:
+    # OpenAI 兼容大模型配置（接入真实模型时填写，mock-mode=false 时生效）
+    base-url: "https://api.deepseek.com"   # DeepSeek OpenAI 兼容地址
+    api-key: "${AI_LLM_API_KEY:}"   # API Key（本地密钥放 ai-secret.yml，不入库）
+    model: "deepseek-flash"                # 模型名
+    temperature: 0.7
+    timeout-seconds: 60
+    max-retries: 2
+    # 向量模型配置（科室介绍库 RAG 向量化用）
+    # 千问：填入 API Key 后启用 qwen3.7-text-embedding；api-key 留空则自动降级本地 BGE-small-zh-v1.5
+    embedding:
+      base-url: "https://ws-vs7utchsqtpnzykd.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"   # 千问 OpenAI 兼容地址（百炼专属端点，注意路径为 /compatible-mode/v1）
+      api-key: "${AI_EMBEDDING_API_KEY:}"   # 千问向量模型 API Key（本地密钥放 ai-secret.yml，不入库）
+      model: "qwen3.7-text-embedding"                                 # 千问向量模型名
+      dimension: 1024                                                 # 向量维度
+      # Milvus 向量库连接（科室介绍库向量持久化存储与检索，替换内存 InMemoryEmbeddingStore）
+      milvus:
+        enabled: true                                                  # 是否启用 Milvus 向量库（false 回退内存向量库）
+        host: "localhost"                                              # Milvus 服务地址
+        port: 19530                                                    # Milvus 端口（gRPC）
+        collection-name: "smart_medical_knowledge"                     # 向量集合名
+        database-name: ""                                              # 数据库名（空=默认库）
 
 # Sensitive words
 sensitive:

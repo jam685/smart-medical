@@ -333,3 +333,24 @@ CREATE TABLE IF NOT EXISTS sm_vector_index (
     INDEX idx_source_document (source_document_id),
     INDEX idx_vector_model (vector_model)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 22. sm_prescription_draft AI 草稿版本表（AI 模块多智能体新增，不在 V1.3 的 21 张表内）
+--     承载 AI 生成草稿（症状摘要/回复草稿/处方草稿），版本自增可追溯；
+--     AI 只写本表，禁止写入正式处方表 sm_prescription；正式处方入库唯一入口为医生确认按钮触发的后端业务逻辑
+CREATE TABLE IF NOT EXISTS sm_prescription_draft (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    consult_id BIGINT COMMENT '关联问诊ID（可空）',
+    session_id VARCHAR(64) COMMENT 'AI 会话ID',
+    patient_id BIGINT COMMENT '患者ID',
+    doctor_id BIGINT COMMENT '医生ID（可空）',
+    type VARCHAR(30) COMMENT '草稿类型：SYMPTOM_SUMMARY症状摘要/REPLY_DRAFT回复草稿/PRESCRIPTION_DRAFT处方草稿',
+    content TEXT COMMENT '草稿内容',
+    version INT DEFAULT 1 COMMENT '草稿版本号（每次生成自增）',
+    status VARCHAR(20) DEFAULT 'PENDING' COMMENT '状态：PENDING待医生确认/FINAL已确认',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_session (session_id),
+    INDEX idx_patient (patient_id),
+    INDEX idx_doctor (doctor_id),
+    INDEX idx_consult (consult_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
