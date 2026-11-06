@@ -13,6 +13,7 @@ import { useRouter } from 'vue-router'
 import { Plus, Clock } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchAppointments, cancelAppointment } from '@/api/appointment'
+import RescheduleDialog from '@/components/RescheduleDialog.vue'
 
 /** Vue Router 实例，用于跳转到新建挂号页 / 挂号详情页 */
 const router = useRouter()
@@ -38,6 +39,9 @@ const activeTab = ref('all')
 const appointments = ref([])
 /** 列表加载状态：true 时显示加载动画 */
 const loading = ref(false)
+/** 改约弹窗 */
+const rescheduleVisible = ref(false)
+const rescheduleTarget = ref(null)
 
 /** 医院名称（平台级常量配置，非挂号业务数据） */
 const HOSPITAL_NAME = '小林智疗互联网医院'
@@ -62,6 +66,10 @@ function normalize(raw) {
   return {
     id: raw.id,
     orderNo: raw.orderNo,
+    queueNo: raw.queueNo,
+    doctorId: raw.doctorId,
+    scheduleId: raw.scheduleId,
+    appointmentTime: raw.appointmentTime,
     dept: raw.department,
     doctor: raw.doctorName,
     doctorTitle: raw.doctorTitle,
@@ -167,6 +175,12 @@ function goDetail(a) { router.push(`/patient/appointments/${a.id}`) }
  * 取消挂号：二次确认 → 调后端取消接口 → 成功后重新拉取列表（热更新持久化）
  * @param {object} a 待取消的挂号单视图对象
  */
+/** 打开改约弹窗 */
+function openReschedule(a) {
+  rescheduleTarget.value = a
+  rescheduleVisible.value = true
+}
+
 async function cancelOrder(a) {
   try {
     await ElMessageBox.confirm(
@@ -240,6 +254,10 @@ onMounted(loadAppointments)
             <span>{{ a.hospital }}</span>
             <span class="dot-sep">·</span>
             <span>单号 {{ a.orderNo }}</span>
+            <template v-if="a.queueNo">
+              <span class="dot-sep">·</span>
+              <span>第 {{ a.queueNo }} 号</span>
+            </template>
             <span class="dot-sep">·</span>
             <span class="fee">挂号费 ¥{{ a.fee ?? '--' }}</span>
           </div>
@@ -248,6 +266,9 @@ onMounted(loadAppointments)
         <!-- 右：操作按钮（点击不冒泡触发整卡跳转） -->
         <div class="appt-actions" @click.stop>
           <el-button text class="detail-link" @click="goDetail(a)">详情 ›</el-button>
+          <el-button v-if="a.status === 'pending'" plain type="primary" size="small" @click="openReschedule(a)">
+            改约
+          </el-button>
           <el-button v-if="a.status === 'pending'" plain type="danger" size="small" @click="cancelOrder(a)">
             取消挂号
           </el-button>
@@ -274,6 +295,9 @@ onMounted(loadAppointments)
         <el-icon class="el-icon--left"><Plus /></el-icon>立即挂号
       </el-button>
     </div>
+
+    <!-- 改约弹窗 -->
+    <RescheduleDialog v-model="rescheduleVisible" :appointment="rescheduleTarget" @success="loadAppointments" />
   </div>
 </template>
 

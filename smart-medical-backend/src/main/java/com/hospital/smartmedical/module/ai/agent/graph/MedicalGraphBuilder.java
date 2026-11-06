@@ -3,6 +3,7 @@ package com.hospital.smartmedical.module.ai.agent.graph;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hospital.smartmedical.module.ai.agent.enums.ConsultStage;
+import com.hospital.smartmedical.module.ai.agent.enums.IntentKeywords;
 import com.hospital.smartmedical.module.ai.agent.enums.UserRole;
 import com.hospital.smartmedical.module.ai.agent.llm.LlmClientService;
 import com.hospital.smartmedical.module.ai.agent.llm.PromptTemplateLoader;
@@ -13,6 +14,7 @@ import com.hospital.smartmedical.module.ai.agent.node.PatientDialogAgentNode;
 import com.hospital.smartmedical.module.ai.agent.node.SaveDraftAuditNode;
 import com.hospital.smartmedical.module.ai.agent.state.ChatMessage;
 import com.hospital.smartmedical.module.ai.agent.state.MedicalGraphState;
+import com.hospital.smartmedical.module.ai.agent.tool.TimeTextParser;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -72,9 +74,8 @@ public class MedicalGraphBuilder {
     /** Jackson JSON 解析（路由 LLM 意图 JSON 输出解析） */
     private final ObjectMapper objectMapper;
 
-    /** 合法意图枚举集合（路由 LLM 输出校验用） */
-    private static final Set<String> VALID_INTENTS = Set.of(
-            "APPOINT", "PROGRESS", "PRESCRIPTION_REPORT", "DOCTOR_PATIENTS", "DOCTOR_PROGRESS", "UNKNOWN");
+    /** 合法意图枚举集合（与 IntentKeywords 共用同一份，避免路由/业务节点两套枚举漂移） */
+    private static final Set<String> VALID_INTENTS = IntentKeywords.VALID_INTENTS;
 
     /** 编译后的可执行图（线程安全） */
     private volatile CompiledGraph<AgentState> compiledGraph;
@@ -138,38 +139,43 @@ public class MedicalGraphBuilder {
     private String route(AgentState state) {
         MedicalGraphState g = state.<MedicalGraphState>value("graph")
                 .orElseThrow(() -> new IllegalStateException("缺少 graph 状态"));
-        // AI 客服会话与预问诊完全隔离：非业务消息一律走客服专属对话节点，不进入预问诊症状采集
+        // 意图只解析一次（LLM 主判 + 关键词兜底），各路由分支复用，避免重复调用模型
+        String intent = resolveIntent(g);
+        boolean business = isBusinessIntentName(intent) && intentAllowed(g, intent);
+        // AI 客服会话与预问诊完全隔离：非业务意图（含 FAQ / UNKNOWN）一律走客服对话节点
         if (g.isAssistantSession()) {
-            return isBusinessIntent(g) ? KEY_BUSINESS : KEY_ASSISTANT_DIALOG;
+            return business ? KEY_BUSINESS : KEY_ASSISTANT_DIALOG;
         }
         ConsultStage stage = g.getCurrentStage() == null ? ConsultStage.PRE_CONSULT : g.getCurrentStage();
         switch (stage) {
-            case FINISHED:
-                return KEY_BUSINESS;
             case DOCTOR_RECEIVE:
-                return isBusinessIntent(g) ? KEY_BUSINESS : KEY_DOCTOR_ASSIST;
+                return business ? KEY_BUSINESS : KEY_DOCTOR_ASSIST;
             case PRE_CONSULT:
             default:
-                return isBusinessIntent(g) ? KEY_BUSINESS : KEY_PATIENT_DIALOG;
+                return business ? KEY_BUSINESS : KEY_PATIENT_DIALOG;
         }
     }
 
     /**
-     * 业务意图识别（挂号/进度/报告/处方/叫号/接诊查询等）。
+     * 意图解析（LLM 主判 + 关键词兜底）：返回合法意图，无法判断返回 null。
      *
-     * <p>真实模式：LLM 判断为主（客服会话用 assistant-intent，预问诊/医生用 business-intent），
-     * 解析失败/UNKNOWN/非法枚举回退硬编码关键词兜底；mock 模式直接走关键词。
-     * 识别结果需通过会话能力过滤：预问诊会话只允许挂号（APPOINT），查询类意图仅在 AI 客服会话可用。</p>
+     * <p><b>关键规则：合法枚举一律采纳（含 UNKNOWN）。</b>模型判断"这不是业务"本身就是有效结论，
+     * 不能因为不是业务就回退关键词——否则「挂号流程是什么」会被关键词「挂号」改判成 APPOINT，
+     * 最终答出一屏医生推荐（历史故障）。</p>
+     *
+     * <p>只有这些情况才回退关键词：模型未返回、JSON 解析失败、输出非法枚举、调用异常、mock 模式。</p>
+     *
+     * <p>补充：模型判 UNKNOWN 但用户明显在办业务（命中 {@link IntentKeywords#APPOINT_ACTION} 动作短语）时，
+     * 兜底提升为 APPOINT——关键词只做"定向兜底"，不再做"全量覆盖"。</p>
      *
      * @param g 图状态
-     * @return true=进入业务节点
+     * @return 意图（APPOINT、FAQ、PROGRESS、PRESCRIPTION_REPORT、DOCTOR_ 系列、UNKNOWN）；无法判断返回 null
      */
-    private boolean isBusinessIntent(MedicalGraphState g) {
+    private String resolveIntent(MedicalGraphState g) {
         String text = g.getLastUserText();
         if (text == null || text.isBlank()) {
-            return false;
+            return null;
         }
-        // LLM 意图判断为主（真实模式才调模型，mock 模式直接走关键词兜底）
         if (!llmClientService.isMockMode()) {
             try {
                 Map<String, Object> vars = new HashMap<>();
@@ -181,31 +187,68 @@ public class MedicalGraphBuilder {
                     String llmOut = llmClientService.chat(prompt, "");
                     JsonNode node = parseRouteIntentJson(llmOut);
                     String intent = textOf(node, "intent");
-                    if (intent != null && VALID_INTENTS.contains(intent) && !"UNKNOWN".equals(intent)) {
-                        // 能力隔离：非客服会话只允许挂号意图，查询类（进度/报告/处方）不进入业务节点
-                        if (!intentAllowed(g, intent)) {
-                            log.info("会话能力隔离：当前会话不开放意图 {}，交由对话节点引导（sessionId={}）",
-                                    intent, g.getSessionId());
-                            return false;
-                        }
-                        // 意图缓存写回图状态，业务节点直接复用，避免重复调用 LLM
+                    if (intent != null && VALID_INTENTS.contains(intent)) {
+                        // 采纳合法枚举（含 UNKNOWN），并写回状态供业务节点复用、避免二次调用模型
                         g.setRouteIntent(intent);
-                        // 实体（科室/医生/患者/时间范围）同步写回，供业务工具精准查询
                         g.setIntentDept(textOf(node, "dept"));
                         g.setIntentDoctorName(textOf(node, "doctorName"));
                         g.setIntentPatientName(textOf(node, "patientName"));
                         g.setIntentTimeDesc(textOf(node, "timeDesc"));
-                        log.info("路由 LLM 意图识别成功：intent={}，dept={}，doctor={}，patient={}，time={}", intent,
+                        log.info("路由 LLM 意图：intent={}，dept={}，doctor={}，patient={}，time={}", intent,
                                 g.getIntentDept(), g.getIntentDoctorName(), g.getIntentPatientName(), g.getIntentTimeDesc());
-                        return true;
+                        // 能力隔离：当前会话不开放的意图降级为 UNKNOWN，交给对话节点引导
+                        if (!"UNKNOWN".equals(intent) && !intentAllowed(g, intent)) {
+                            log.info("会话能力隔离：当前会话不开放意图 {}，交由对话节点引导（sessionId={}）",
+                                    intent, g.getSessionId());
+                            return "UNKNOWN";
+                        }
+                        // 模型判 UNKNOWN，但用户其实在说"帮我挂/我要挂" → 定向提升为 APPOINT
+                        if ("UNKNOWN".equals(intent) && containsAny(text, IntentKeywords.APPOINT_ACTION)) {
+                            log.info("LLM 判 UNKNOWN 但命中挂号动作短语，兜底提升为 APPOINT（sessionId={}）", g.getSessionId());
+                            g.setRouteIntent("APPOINT");
+                            return "APPOINT";
+                        }
+                        // 模型判 UNKNOWN，但存在待确认号源且患者回复"可以/好的" → 提升为 APPOINT（确认轮）
+                        if ("UNKNOWN".equals(intent) && g.getPendingSlotId() != null
+                                && containsAny(text, IntentKeywords.APPOINT_CONFIRM)) {
+                            log.info("LLM 判 UNKNOWN 但存在待确认号源且患者表示同意，提升为 APPOINT（sessionId={}）",
+                                    g.getSessionId());
+                            g.setRouteIntent("APPOINT");
+                            return "APPOINT";
+                        }
+                        // 模型判 UNKNOWN，但上一轮 AI 在问就诊时间、本轮是纯时间回复（如"明天下午四点"）→ APPOINT
+                        if ("UNKNOWN".equals(intent) && lastAiAsksAppointTime(g)
+                                && TimeTextParser.parse(text) != null) {
+                            log.info("LLM 判 UNKNOWN 但处于挂号时间确认环节，提升为 APPOINT（sessionId={}）",
+                                    g.getSessionId());
+                            g.setRouteIntent("APPOINT");
+                            return "APPOINT";
+                        }
+                        return intent;
                     }
-                    log.info("路由 LLM 意图识别结果无效（intent={}），回退关键词兜底", intent);
+                    log.info("路由 LLM 输出非法意图（intent={}），回退关键词兜底", intent);
                 }
             } catch (Exception e) {
                 log.warn("路由 LLM 意图识别失败，回退关键词兜底：{}", e.getMessage());
             }
         }
-        return keywordBusinessIntent(g);
+        return keywordIntent(g);
+    }
+
+    /**
+     * 是否属于「需要进入业务节点」的意图。
+     *
+     * <p>FAQ（问流程/材料/费用）与 UNKNOWN（闲聊/咨询）都不算业务，交给对话节点。</p>
+     *
+     * @param intent 意图
+     * @return true=业务意图
+     */
+    static boolean isBusinessIntentName(String intent) {
+        return "APPOINT".equals(intent)
+                || "PROGRESS".equals(intent)
+                || "PRESCRIPTION_REPORT".equals(intent)
+                || "DOCTOR_PATIENTS".equals(intent)
+                || "DOCTOR_PROGRESS".equals(intent);
     }
 
     /**
@@ -303,38 +346,58 @@ public class MedicalGraphBuilder {
     }
 
     /**
-     * 硬编码关键词兜底判断（路由 LLM 识别失败/UNKNOWN/mock 模式时使用）。
+     * 关键词兜底意图（仅在模型未给出合法枚举时使用：mock 模式 / 解析失败 / 非法值 / 调用异常）。
      *
      * @param g 图状态
-     * @return true=关键词命中业务意图
+     * @return 意图；无命中返回 UNKNOWN
      */
-    private boolean keywordBusinessIntent(MedicalGraphState g) {
+    private String keywordIntent(MedicalGraphState g) {
         String text = g.getLastUserText();
         if (text == null || text.isBlank()) {
-            return false;
+            return "UNKNOWN";
         }
         if (g.getRole() == UserRole.DOCTOR) {
             // 就诊进度查询优先（"查患者就诊进度"同时命中两类关键词时按进度处理）
-            if (containsAny(text, "就诊进度", "进度", "就诊记录", "接诊记录", "就诊情况")) {
-                return true;
+            if (containsAny(text, IntentKeywords.DOCTOR_PROGRESS)) {
+                return "DOCTOR_PROGRESS";
             }
-            return containsAny(text, "接诊患者", "我的患者", "待就诊", "叫号", "查患者");
+            return containsAny(text, IntentKeywords.DOCTOR_PATIENTS) ? "DOCTOR_PATIENTS" : "UNKNOWN";
         }
-        // 科室推荐类问题（该挂什么科/挂哪个科/推荐挂哪个科）不视为挂号意图，交由预问诊 LLM 推荐科室
-        if (containsAny(text, "什么科", "哪个科", "哪科", "推荐挂", "应该挂", "挂什么", "挂哪个")) {
-            return false;
+        // 挂号确认轮：存在待确认号源且患者回复"可以/好的" → 仍走业务节点完成下单
+        if (g.getPendingSlotId() != null
+                && !containsAny(text, IntentKeywords.APPOINT_DENY)
+                && containsAny(text, IntentKeywords.APPOINT_CONFIRM)) {
+            return "APPOINT";
+        }
+        // 挂号时间确认轮：上一轮 AI 刚问过就诊时间，本轮是纯时间回复（支持中文数字）→ 仍走业务节点
+        if (lastAiAsksAppointTime(g) && TimeTextParser.parse(text) != null) {
+            return "APPOINT";
+        }
+        // 科室推荐 + 流程/材料/费用/时间/地点类问题不算挂号意图
+        if (containsAny(text, IntentKeywords.APPOINT_EXCLUDED)) {
+            return "UNKNOWN";
         }
         // 挂号确认环节：患者只回复时间（如"明天上午9点"）且最近 AI 在引导确认挂号时间 → 仍走业务节点
-        if (containsAny(text, "明天", "今天", "后天", "上午", "下午", "晚上", "中午", "点")
+        if (containsAny(text, IntentKeywords.APPOINT_TIME_WORDS)
                 && lastAiAsksAppointTime(g)) {
-            return true;
+            return "APPOINT";
         }
-        // 能力隔离：预问诊会话只提供挂号引导，进度/报告/处方查询统一由数字医生小林承担
+        // 挂号意图：负向词闸门前置拦截"挂念/挂科/挂电话"这类通用词；不再用单字"挂"
+        boolean negative = containsAny(text, IntentKeywords.APPOINT_NEGATIVE);
+        if (!negative && containsAny(text, IntentKeywords.APPOINT_POSITIVE)) {
+            return "APPOINT";
+        }
+        // 能力隔离：预问诊会话只提供挂号引导，进度/报告/处方查询由数字医生小林承担
         if (!g.isAssistantSession()) {
-            return containsAny(text, "挂号", "预约", "挂一个", "挂个", "挂", "的号", "号吗");
+            return "UNKNOWN";
         }
-        return containsAny(text, "挂号", "预约", "挂一个", "挂个", "挂", "的号", "号吗",
-                "进度", "到哪", "排到", "就诊状态", "报告", "处方", "药方", "检查结果");
+        if (containsAny(text, IntentKeywords.PROGRESS)) {
+            return "PROGRESS";
+        }
+        if (containsAny(text, IntentKeywords.REPORT_PRESCRIPTION)) {
+            return "PRESCRIPTION_REPORT";
+        }
+        return "UNKNOWN";
     }
 
     /**

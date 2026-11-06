@@ -63,6 +63,16 @@ public class PromptTemplateLoader {
      */
     @PostConstruct
     public void init() {
+        // 清理历史遗留：enabled=1 但 promptContent 为空的模板行。
+        // 这些是 init() 旧逻辑 seed.getOrDefault(code, "") 插入的空串，
+        // 会被 render() 当作"DB 命中"永远压掉 yaml 兜底。
+        promptTemplateMapper.update(null,
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<PromptTemplate>()
+                        .eq(PromptTemplate::getEnabled, 1)
+                        .and(w -> w.isNull(PromptTemplate::getPromptContent)
+                                .or().eq(PromptTemplate::getPromptContent, ""))
+                        .set(PromptTemplate::getEnabled, 0)
+                        .set(PromptTemplate::getUpdatedAt, LocalDateTime.now()));
         Map<String, String> seed = loadYamlTemplates();
         for (Map.Entry<String, String[]> e : BUILTIN_TEMPLATES.entrySet()) {
             String code = e.getKey();
@@ -72,12 +82,21 @@ public class PromptTemplateLoader {
             if (count != null && count > 0) {
                 continue;
             }
+            // 关键修复：yaml 里不存在的模板（如 doctor-dialog / doctor-intent / doctor-polish）
+            // 跳过入库。如果入库一条空串记录，render() 会把这条 "" 当作命中 DB，
+            // 永远走不到 yaml 兜底，造成"配置了 yaml 但看起来没生效"的假象。
+            String yamlContent = seed.get(code);
+            if (yamlContent == null || yamlContent.isBlank()) {
+                log.warn("提示词模板 yaml 缺失：{} — 跳过入库，管理员端补齐 yaml 后重启生效。" +
+                        "当前 render() 会直接走 yaml 兜底链路（返回空串→告警管理员）", code);
+                continue;
+            }
             PromptTemplate t = new PromptTemplate();
             t.setTemplateCode(code);
             t.setTemplateName(e.getValue()[1]);
             t.setScene(e.getValue()[0]);
-            t.setVariables(collectVariables(seed.get(code)));
-            t.setPromptContent(seed.getOrDefault(code, ""));
+            t.setVariables(collectVariables(yamlContent));
+            t.setPromptContent(yamlContent);
             t.setEnabled(1);
             t.setCreatedAt(LocalDateTime.now());
             t.setUpdatedAt(LocalDateTime.now());

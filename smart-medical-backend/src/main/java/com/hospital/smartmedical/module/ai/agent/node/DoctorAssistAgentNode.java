@@ -1,6 +1,7 @@
 package com.hospital.smartmedical.module.ai.agent.node;
 
 import com.hospital.smartmedical.module.ai.agent.enums.ConsultStage;
+import com.hospital.smartmedical.module.ai.agent.enums.ReplySource;
 import com.hospital.smartmedical.module.ai.agent.llm.LlmClientService;
 import com.hospital.smartmedical.module.ai.agent.llm.PromptTemplateLoader;
 import com.hospital.smartmedical.module.ai.agent.state.ChatMessage;
@@ -81,6 +82,8 @@ public class DoctorAssistAgentNode implements NodeAction<AgentState> {
                 g.setDraftType("REPLY_DRAFT");
             }
             g.setReply(replyDraft);
+            // 标记来源：医生草稿不参与语义缓存
+            g.setReplySource(ReplySource.DOCTOR_ASSIST);
             g.setHasNewDraft(true);
             // 追加 AI 消息到对话历史
             g.getChatHistory().add(new ChatMessage("AI", "TEXT", replyDraft, null, LocalDateTime.now().format(TIME_FMT)));

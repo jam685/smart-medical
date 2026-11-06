@@ -1,0 +1,63 @@
+PR-6 号源与排班验收记录
+时间：2026-11-05 22:15—22:40
+范围：患者端排班/号源选号、医生端排班配套、AI 挂号链路适配号源
+
+一、交付内容
+1. 数据模型
+   - 新增 sm_schedule_slot（医生 × 日期 × 半小时时段），唯一键 (doctor_id, work_date, start_time)；
+     booked_count 只能通过带条件的单条 UPDATE 自增，是并发控制的唯一真相。
+   - sm_appointment 增加 schedule_id / queue_no / slot_start（均可空，历史数据兼容）。
+2. 接口
+   - GET  /schedules/slots?doctorId&date          患者选号（余号/是否可约）
+   - GET  /schedules/days?doctorId&startDate&days 患者日期条概览（有号/约满/已过/无排班）
+   - GET  /doctors/me/schedules                   医生看自己的排班
+   - PUT  /doctors/me/schedules/{id}/status       医生停诊/恢复（已有人预约时拒绝）
+   - PUT  /doctors/me/schedules/{id}/capacity     医生加号/减号（不得小于已约数）
+   - POST /admin/schedules/generate               管理员按医生/科室批量生成号源
+   - POST /appointments {scheduleId}              按号源下单（未传 scheduleId 走旧链路）
+3. 并发方案
+   - 扣号：UPDATE sm_schedule_slot SET booked_count=booked_count+1
+           WHERE id=? AND status='OPEN' AND booked_count < total_count
+     返回 0 即号满，不重试、不加分布式锁；扣号与落单、建就诊进度同事务，失败整体回滚。
+   - 同一患者并发下单：SELECT id FROM sm_patient WHERE id=? FOR UPDATE 串行化（防双击/重放）。
+   - 取消：先条件更新单据状态（PENDING/CONFIRMED → CANCELLED），成功后才回补号源，保证只回补一次。
+   - 序号：扣减后的 booked_count 即时段内序号，无额外竞争。
+4. AI 链路
+   - BusinessToolExecutor 不再自己拼时间，改为 scheduleService.resolveForAi(doctorId, 期望时间)：
+     同日优先、不早于期望时间；当日无号顺延最近日期，并在回复里说明"已为您安排最近可约时段"。
+   - 回复与卡片带真实时段与就诊序号；业务异常（号满/重复挂号）转成引导话术，不落库。
+5. 兜底
+   - 空库启动自动为全部医生生成近 7 天号源（app.schedule.auto-seed，默认开）；
+     已有号源不重复生成，不覆盖停诊/加号结果。
+
+二、测试结果
+1. mvn -o package：Tests run: 54, Failures: 0, Errors: 0, Skipped: 0 —— BUILD SUCCESS
+   新增 10 个用例：
+   - SlotDeductConcurrencyTest（真实 MySQL）：50 线程抢 5 个号 → 恰好 5 次成功、45 次 0 行、booked_count=5；
+     回补条件更新不会减成负数。
+   - AppointmentSlotBookingTest（5 个）：扣号成功序号=1；号满不落单；过期号源不下扣；取消回补；重复取消不二次回补。
+   - ScheduleResolveForAiTest（3 个）：同日不早于期望时间命中；当日无号顺延；7 天无号返回 null。
+
+2. HTTP 并发实测（12 个新患者同时抢同一时段 5 个号）
+   - 结果：success=5，full=7，其余异常 0；slot 最终 total=5 / booked=5 / remain=0。
+   （测试患者与挂号单已清理，号源计数复位）
+
+3. 端到端
+   - 号源生成：19 位医生 × 7 天 × 12 时段 = 1596 行。
+   - 下单：POST /appointments {scheduleId} → queueNo=1，余号 5→4；同日同医生重复下单被拦截。
+   - 取消：余号 4→5；重复取消报"状态已变更"。
+   - 医生停诊：空时段 → SUSPENDED，患者下单被拒"该号源不可预约"；恢复后正常。
+   - 医生停诊已约时段 → 拒绝："该时段已有 1 人预约，请先联系患者改约并退号后再停诊"。
+   - 加号 5→8 成功；减到小于已约数被拒。
+   - AI："帮我挂李医生的号，明天上午9点" → 命中 09:00-09:30、序号 1，回复与卡片一致；
+     "帮我挂李医生的号，今天上午8点"（已过）→ 顺延次日 08:00，并提示"您指定的时间已约满"。
+
+4. 前端
+   - vite build：✓ built（无告警级错误）
+   - 浏览器实测（Edge headless）：患者选号页 12 个时段余号正确、今日显示"已过"；
+     医生端菜单新增「我的排班」，明日 08:00/09:00 显示"已约 1 / 5"；无 console 错误。
+
+三、遗留（未包含在本次范围）
+- 爽约自动标记/预占超时释放（需先做支付或签到）。
+- 管理员排班页面（生成接口已就绪，暂无 UI）。
+- 停诊后的批量改约/站内信通知。

@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import AiRobotDialog from '@/components/AiRobotDialog.vue'
 import AppLogo from '@/components/AppLogo.vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 import {
   Monitor,
   User,
   ChatDotSquare,
   DataAnalysis,
+  Calendar,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -22,6 +24,7 @@ const menus = [
   { path: '/doctor/appointments', title: '接诊管理', icon: User },
   { path: '/doctor/online-consults', title: '问诊处理', icon: ChatDotSquare },
   { path: '/doctor/ai-analysis', title: 'AI 辅助分析', icon: DataAnalysis },
+  { path: '/doctor/schedule', title: '我的排班', icon: Calendar },
 ]
 
 function handleLogout() {
@@ -55,6 +58,7 @@ function handleLogout() {
     <div class="main">
       <header class="top-bar">
         <div class="breadcrumb">{{ route.meta.title || '医生中心' }}</div>
+        <NotificationBell class="bell-wrap" />
         <div class="user-area">
           <el-dropdown trigger="click">
             <span class="user-info">
@@ -107,7 +111,8 @@ export default { components: { ArrowDown } }
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 24px;
 }
-.breadcrumb { font-size: 16px; font-weight: 500; color: #111827; }
+.breadcrumb { font-size: 16px; font-weight: 500; color: #111827; margin-right: auto; }
+.bell-wrap { margin-right: 18px; }
 .user-info { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .name { font-size: 14px; color: #374151; }
 .content { flex: 1; overflow: auto; background: #F5F7FA; }

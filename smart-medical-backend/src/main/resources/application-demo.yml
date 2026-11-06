@@ -1,0 +1,13 @@
+# 演示环境专用覆盖：--spring.profiles.active=demo
+#
+# 打开后：
+#   1. DemoMode Bean 生效（万能口令 123456 可用，管理端新建账号默认密码 123456）
+#   2. 空库启动时自动为医生生成近 7 天号源，保证"选号预约"开箱可用
+#   3. 忘记密码接口回显验证码（本地无短信通道）
+#
+# 生产环境不要激活本 profile。
+app:
+  schedule:
+    auto-seed: true
+  security:
+    expose-verification-code: true

@@ -40,8 +40,18 @@ public class PreConsultServiceImpl implements PreConsultService {
     private static final String MSG_IMAGE = "IMAGE";
 
     /**
-     * 发送预问诊消息（PRE-01）。
+     * 发送预问诊消息（PRE-01）——旧规则引擎链路，已废弃。
+     *
+     * <p>患者端全链路已迁移到 {@link com.hospital.smartmedical.module.ai.agent.service.AiAgentService}
+     * （/ai/patient-chat，LangGraph 真实 LLM 图流转）。AiAgentService 的 mirrorToPreConsult 方法是
+     * sm_pre_consult 表的唯一写入方。</p>
+     *
+     * <p>本方法保留仅为兼容 `/pre-consults` 读接口（getHistory / listSessions）对应的 Controller
+     * 路由定义完整。前端无任何页面调用此写接口。</p>
+     *
+     * @deprecated 由 AiAgentService.process() + mirrorToPreConsult() 取代
      */
+    @Deprecated
     @Override
     @Transactional
     public Map<String, Object> sendMessage(Long patientId, String sessionId, String content, String imageUrl) {

@@ -57,6 +57,7 @@
                     <div class="ai-row"><span class="ai-k">科室</span><span class="ai-v">{{ m.card.department }}</span></div>
                     <div class="ai-row"><span class="ai-k">单号</span><span class="ai-v">{{ m.card.appointmentNo }}</span></div>
                     <div class="ai-row"><span class="ai-k">时间</span><span class="ai-v">{{ m.card.appointmentTime }}</span></div>
+                    <div v-if="m.card.queueNo" class="ai-row"><span class="ai-k">序号</span><span class="ai-v">第 {{ m.card.queueNo }} 号</span></div>
                   </div>
                   <div class="ai-card-actions">
                     <el-button size="small" @click="go('/patient/appointments')">查看我的挂号</el-button>
@@ -164,11 +165,15 @@
  */
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import {
   fetchAiChatHistory,
   listAiChatSessions,
   streamAiChatMessage,
 } from '@/api/aiagent'
+
+/** 用户 store（取 userId 用于持久化 sessionId 到 localStorage） */
+const userStore = useUserStore()
 
 /** 路由实例（卡片"查看详情/查看我的挂号"跳转用） */
 const router = useRouter()
@@ -314,6 +319,11 @@ async function send() {
           if (!aiMsg.content && data.reply) {
             aiMsg.content = data.reply
             scrollToBottom()
+          }
+          // ✅ 关键：把当前 sessionId 写 localStorage，供 ConsultCreate.vue 读取并带给问诊后端
+          const uid = userStore.user?.id
+          if (uid && data.sessionId) {
+            localStorage.setItem(`ai_cs_sid_${uid}`, data.sessionId)
           }
           if (sessions.value.length) loadSessions()
         },

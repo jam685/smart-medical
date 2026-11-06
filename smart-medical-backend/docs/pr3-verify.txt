@@ -1,0 +1,39 @@
+PR-3 验收记录（语义缓存：分类白名单 + 按类 TTL + 读取二次校验）
+时间：2026-11-04 17:53—17:55
+服务：http://localhost:8080/api/smart-medical/v1（jar 重建后启动，PID 120356）
+配置：flow-ttl-days=30，common-ttl-days=3，require-disclaimer=false
+
+一、分类命中验证（每类各问两次）
+| 用例 | 第 1 次 | 第 2 次 | 结论 |
+|---|---|---|---|
+| 挂号流程是什么（FLOW） | 未命中 7325 ms | 命中 32 ms（score=1.0） | ✅ 流程类可缓存 |
+| 体检前需要注意什么（COMMON） | 未命中 4487 ms | 命中 29 ms（score=1.0） | ✅ 常识类可缓存 |
+| 头疼吃什么药（SENSITIVE） | 未命中 4540 ms | 未命中 2254 ms | ✅ 用药类不进缓存（每次走 LLM） |
+
+二、统计接口（/admin/semantic-cache/stats）
+total=4（只统计通过闸门的提问，SENSITIVE 不计入）
+hit=2，returned=2，hitRate=0.5
+written=2（writtenFlow=1，writtenCommon=1）
+skipped=2（两条 SENSITIVE 被闸门拦截）
+queryVectorCacheSize=2，queryVectorHits=2，queryVectorMisses=2
+flowTtlDays=30，commonTtlDays=3，requireDisclaimer=false
+
+三、Redis 实际条目（TTL 与分类）
+| 分类 | TTL | 说明 |
+|---|---|---|
+| FLOW | 2591977 秒 ≈ 30.0 天 | ✅ 按分类 TTL 写入 |
+| COMMON | 259185 秒 ≈ 3.0 天 | ✅ 按分类 TTL 写入 |
+| (none) | 603726 秒 ≈ 7.0 天 | 旧 v2 条目，无 category 字段；v3 命名空间过滤后永不命中，7 天后自然过期 |
+
+四、服务端日志（关键片段）
+[语义缓存] 已沉淀问答：'挂号流程是什么'（ns=v3:qwen3.7-text-embedding，分类=FLOW，TTL=30天）
+[语义缓存] 命中返回（similarity=1.000，采样率 100%，分类 FLOW）：'挂号流程是什么'
+[语义缓存] 已沉淀问答：'体检前需要注意什么'（ns=v3:qwen3.7-text-embedding，分类=COMMON，TTL=3天）
+[语义缓存] 命中返回（similarity=1.000，采样率 100%，分类 COMMON）：'体检前需要注意什么'
+[语义缓存] 跳过（闸门拦截）：'头疼吃什么药'   ×2
+
+五、结论
+1) 分类白名单生效：只有 FLOW / COMMON 进入缓存，SENSITIVE 每次走真实模型；
+2) 按类 TTL 生效：流程类 30 天、常识类 3 天；
+3) 命名空间升到 v3：旧 v2 条目全部失效（不再命中），符合「分类规则变更即整体失效」的设计；
+4) 读取二次校验未被触发（rejectedOnRead=0），因为现有条目均为 v3 新写入且不含 PII/敏感词。

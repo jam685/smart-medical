@@ -3,6 +3,7 @@ package com.hospital.smartmedical.module.admin.service;
 import com.hospital.smartmedical.common.result.PageResult;
 import com.hospital.smartmedical.module.admin.dto.AdminUserRequest;
 import com.hospital.smartmedical.module.admin.entity.Admin;
+import com.hospital.smartmedical.module.admin.entity.DataQuality;
 import com.hospital.smartmedical.module.admin.entity.ModelConfig;
 
 import java.util.List;
@@ -97,4 +98,9 @@ public interface AdminService {
      * 返回数据质量记录
      */
     List<?> getDataQuality();
+
+    /**
+     * 手动触发一次数据质量巡检（立即跑 scheduler 逻辑，insert 新快照）。
+     */
+    DataQuality runDataQualityCheck();
 }

@@ -3,6 +3,7 @@ package com.hospital.smartmedical.module.patient.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.exception.BizException;
+import com.hospital.smartmedical.common.security.DemoMode;
 import com.hospital.smartmedical.common.security.JwtUtil;
 import com.hospital.smartmedical.common.security.VerificationCodeService;
 import com.hospital.smartmedical.common.storage.FileStorageService;
@@ -10,6 +11,7 @@ import com.hospital.smartmedical.module.patient.entity.Patient;
 import com.hospital.smartmedical.module.patient.mapper.PatientMapper;
 import com.hospital.smartmedical.module.patient.service.PatientService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -26,9 +28,10 @@ public class PatientServiceImpl implements PatientService {
     private final JwtUtil jwtUtil;
     private final FileStorageService fileStorageService;
 
-    // Demo 密码 hash: 123456
-    private static final String DEMO_PASSWORD_HASH =
-            "$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi";
+    /**
+     * 演示模式（仅 demo profile 下存在）；默认环境为空，只认数据库中的真实密码。
+     */
+    private final ObjectProvider<DemoMode> demoModeProvider;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -48,8 +51,13 @@ public class PatientServiceImpl implements PatientService {
             throw new BizException("用户名或密码错误");
         }
 
-        // 密码校验：支持 Demo 简化和 BCrypt
-        boolean matched = passwordEncoder.matches(password, DEMO_PASSWORD_HASH);
+        // 密码校验：默认只认数据库中的真实 BCrypt 密码；
+        // 仅当以 demo profile 启动（DemoMode Bean 存在）时才额外接受演示口令
+        boolean matched = false;
+        DemoMode demoMode = demoModeProvider.getIfAvailable();
+        if (demoMode != null && demoMode.matches(password)) {
+            matched = true;
+        }
         if (!matched && patient.getPassword() != null) {
             matched = passwordEncoder.matches(password, patient.getPassword());
         }
@@ -183,7 +191,7 @@ public class PatientServiceImpl implements PatientService {
         if (patient == null) {
             throw new BizException("患者不存在");
         }
-        String avatarUrl = fileStorageService.saveAvatar(file, "patient_" + id);
+        String avatarUrl = fileStorageService.saveAvatar(file);
 
         patient.setAvatar(avatarUrl);
         patient.setUpdatedAt(LocalDateTime.now());
@@ -203,9 +211,9 @@ public class PatientServiceImpl implements PatientService {
         if (newPassword == null || newPassword.length() < 6 || newPassword.length() > 64) {
             throw new BizException("新密码长度需为 6-64 位");
         }
-        // 原密码校验口径与登录一致：Demo 密码或库中密码任一匹配即可
-        boolean matched = passwordEncoder.matches(oldPassword, DEMO_PASSWORD_HASH)
-                || (patient.getPassword() != null && passwordEncoder.matches(oldPassword, patient.getPassword()));
+        // 原密码只认真实密码：演示口令不能作为"原密码"使用（否则等于任意账号可被改密）
+        boolean matched = patient.getPassword() != null
+                && passwordEncoder.matches(oldPassword, patient.getPassword());
         if (!matched) {
             throw new BizException("原密码不正确");
         }
@@ -241,8 +249,7 @@ public class PatientServiceImpl implements PatientService {
             throw new BizException("账号已被禁用，无法重置密码");
         }
         String code = VerificationCodeService.generate(patient.getUsername());
-        // 演示环境无真实短信通道：验证码随响应返回，并打印服务端日志便于核对
-        System.out.println("[密码重置] 用户名 " + patient.getUsername() + " 验证码 " + code + "（5 分钟内有效）");
+        // 无短信通道：验证码只通过服务端日志/演示回显交付，响应体默认不返回（见 PatientController 开关）
         return code;
     }
 

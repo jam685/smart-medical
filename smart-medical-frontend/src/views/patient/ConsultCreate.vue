@@ -11,11 +11,18 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Check } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, MagicStick } from '@element-plus/icons-vue'
 import { fetchMyDoctors, createConsult } from '@/api/onlineconsult'
+import { fetchPreConsultHistory } from '@/api/preconsult'
+import { useUserStore } from '@/stores/user'
 
-/** 路由实例：用于返回列表、提交成功后跳转聊天页 */
+const userStore = useUserStore()
 const router = useRouter()
+
+/** AI 预问诊 sessionId（从 localStorage 读，患者走完 AI 助手后会写入） */
+const preConsultSessionId = ref('')
+/** AI 预问诊预填提示 */
+const preFilled = ref('')
 
 /** 医生加载状态 */
 const doctorLoading = ref(false)
@@ -101,6 +108,9 @@ async function submit() {
       chiefComplaint: form.value.chiefComplaint.trim(),
       description: form.value.description.trim(),
     }
+    if (preConsultSessionId.value) {
+      payload.preConsultSessionId = preConsultSessionId.value
+    }
     const consult = await createConsult(payload)
     ElMessage.success('问诊已发起，等待医生接诊')
     router.push(`/patient/online-consults/${consult.id}`)
@@ -120,6 +130,33 @@ onMounted(async () => {
     // 错误提示由请求拦截器统一处理
   } finally {
     doctorLoading.value = false
+  }
+
+  // 尝试从 localStorage 读取 AI 预问诊 sessionId 并预填
+  const userId = userStore.user?.id
+  const key = userId ? `ai_cs_sid_${userId}` : ''
+  const sid = key ? localStorage.getItem(key) : ''
+  if (sid) {
+    preConsultSessionId.value = sid
+    try {
+      const history = await fetchPreConsultHistory(sid)
+      if (history && history.length > 0) {
+        const patientMsgs = history
+          .filter(m => m.sender === 'PATIENT' && m.content)
+          .map(m => m.content.trim())
+          .filter(Boolean)
+        if (patientMsgs.length > 0) {
+          // 取首句作为主诉（截断到 30 字），剩下的作为病情描述
+          const first = patientMsgs[0]
+          const rest = patientMsgs.slice(1).join('；')
+          form.value.chiefComplaint = first.length > 30 ? first.slice(0, 30) + '…' : first
+          form.value.description = rest || first
+          preFilled.value = `检测到您刚刚和 AI 助手聊过症状，已自动预填（${patientMsgs.length} 条），可直接提交或再补充几句`
+        }
+      }
+    } catch (_e) {
+      // 预填失败不阻断流程，静默继续
+    }
   }
 })
 </script>
@@ -180,6 +217,10 @@ onMounted(async () => {
 
     <!-- 填写问诊信息 -->
     <p class="panel-hint sub">2. 描述您的病情</p>
+    <div v-if="preFilled" class="prefill-tip">
+      <el-icon><MagicStick /></el-icon>
+      <span>{{ preFilled }}</span>
+    </div>
     <div class="form-card">
       <el-form :model="form" label-position="top">
         <el-form-item label="主诉（哪里不舒服？）" required>
@@ -220,6 +261,14 @@ onMounted(async () => {
 
 .panel-hint { font-size: 15px; font-weight: 600; color: #2C3E50; margin: 0 0 14px; }
 .panel-hint.sub { margin-top: 26px; }
+.prefill-tip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; margin-bottom: 14px;
+  background: linear-gradient(135deg, #E3F2FF, #EFF9FD);
+  border: 1px solid #BFD9F7; border-radius: 10px;
+  font-size: 13px; color: #1E7AE6; line-height: 1.6;
+}
+.prefill-tip .el-icon { font-size: 16px; flex-shrink: 0; }
 
 /* 科室筛选 chips */
 .dept-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }

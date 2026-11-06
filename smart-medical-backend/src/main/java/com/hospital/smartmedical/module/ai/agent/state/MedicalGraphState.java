@@ -1,6 +1,7 @@
 package com.hospital.smartmedical.module.ai.agent.state;
 
 import com.hospital.smartmedical.module.ai.agent.enums.ConsultStage;
+import com.hospital.smartmedical.module.ai.agent.enums.ReplySource;
 import com.hospital.smartmedical.module.ai.agent.enums.UserRole;
 import lombok.Data;
 
@@ -75,6 +76,14 @@ public class MedicalGraphState implements Serializable {
     /** 给前端展示的最终回复文本 */
     private String reply;
 
+    /**
+     * 本轮回复来源节点（每轮开始清空）。
+     *
+     * <p>语义缓存据此过滤：只有 {@code ASSISTANT_DIALOG} 的回复允许进缓存；
+     * 业务节点的回复含实时号源/列表，不能跨患者复用。</p>
+     */
+    private ReplySource replySource;
+
     /** 当前用户最新一条文本消息（节点快捷读取用） */
     private String lastUserText;
 
@@ -89,6 +98,15 @@ public class MedicalGraphState implements Serializable {
 
     /** 意图识别抽取的科室实体（本轮消息，供业务工具精准查询；每轮开始清空） */
     private String intentDept;
+
+    /**
+     * 待确认的号源 ID（跨轮保留）。
+     *
+     * <p>场景：患者期望时段已满，系统给出"最近可约"建议但不直接下单，
+     * 把候选号源记在这里；下一轮患者回复"可以"时再用它完成挂号。
+     * 不做每轮清空，只在"确认下单 / 明确拒绝 / 换时间"时清除。</p>
+     */
+    private Long pendingSlotId;
 
     /** 意图识别抽取的医生姓名实体（本轮消息；每轮开始清空） */
     private String intentDoctorName;

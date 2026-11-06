@@ -55,8 +55,11 @@ public class AppointmentController {
                                       HttpServletRequest request) {
         Long userId = (Long) request.getAttribute("currentUserId");
         Role role = (Role) request.getAttribute("currentUserRole");
-        Appointment appt = appointmentService.createAppointment(userId, role,
-                body.getDoctorId(), body.getDepartment(), body.getAppointmentTime());
+        // 选号页/AI 挂号统一传 scheduleId 走号源扣减；未传时兼容旧的自由时间下单
+        Appointment appt = body.getScheduleId() != null
+                ? appointmentService.createAppointmentBySlot(userId, role, body.getScheduleId())
+                : appointmentService.createAppointment(userId, role,
+                        body.getDoctorId(), body.getDepartment(), body.getAppointmentTime());
         return Result.ok(appt);
     }
 
@@ -94,6 +97,23 @@ public class AppointmentController {
     }
 
     /**
+     * 患者自助改约（同医生换时段，原子换号）
+     *
+     * @param id      原挂号单 ID
+     * @param body    {toSlotId}
+     * @param request HTTP 请求（注入当前患者）
+     * @return 新挂号单
+     */
+    @PostMapping("/{id}/reschedule")
+    public Result<Appointment> reschedule(@PathVariable Long id,
+                                          @RequestBody RescheduleRequest body,
+                                          HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("currentUserId");
+        Role role = (Role) request.getAttribute("currentUserRole");
+        return Result.ok(appointmentService.rescheduleAppointment(id, userId, role, body.getToSlotId()));
+    }
+
+    /**
      * 取消挂号（状态置为 CANCELLED，仅患者本人可操作）
      *
      * @param id      挂号单 ID
@@ -109,15 +129,26 @@ public class AppointmentController {
     }
 
     /**
+     * 改约请求体
+     */
+    @Data
+    public static class RescheduleRequest {
+        /** 目标号源 ID（必须与原单同一医生） */
+        private Long toSlotId;
+    }
+
+    /**
      * 创建挂号请求体
      */
     @Data
     public static class CreateAppointmentRequest {
-        /** 选择的医生 ID（sm_doctor.id，必填） */
+        /** 号源 ID（sm_schedule_slot.id；传了它就走号源扣减，优先于 appointmentTime） */
+        private Long scheduleId;
+        /** 选择的医生 ID（sm_doctor.id，未传 scheduleId 时必填） */
         private Long doctorId;
         /** 就诊科室名（可空，空则后端取医生所属科室） */
         private String department;
-        /** 就诊时间，格式 yyyy-MM-dd HH:mm:ss（必填，不能为过去时间） */
+        /** 就诊时间，格式 yyyy-MM-dd HH:mm:ss（未传 scheduleId 时必填） */
         @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
         private LocalDateTime appointmentTime;
     }

@@ -46,4 +46,7 @@ public class OnlineConsultRecord implements Serializable {
 
     /** 更新时间 */
     private LocalDateTime updatedAt;
+
+    /** 关联的 AI 预问诊 sessionId（sm_pre_consult.session_id，由患者在 AI 助手走完预问诊后发起问诊时带上） */
+    private String preConsultSessionId;
 }

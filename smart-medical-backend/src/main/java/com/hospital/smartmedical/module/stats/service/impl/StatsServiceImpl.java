@@ -69,6 +69,24 @@ public class StatsServiceImpl implements StatsService {
     private final VisitService visitService;
 
     /**
+     * 就诊记录的有效性过滤：排除"挂号单已取消（CANCELLED）"的进度记录。
+     *
+     * <p>停诊退号 / 改约 / 患者取消走的是 {@code cancelIfActive}（只更新 sm_appointment，
+     * 不动 sm_visit），如果统计不过滤，取消后"候诊人数/今日就诊"会虚高。
+     * 列表侧（{@code VisitServiceImpl.listVisits}）已有同样口径，这里保持一致。</p>
+     *
+     * <p>注意 {@code appointment_id IS NULL}：历史数据可能没有关联挂号单，
+     * SQL 的 {@code NOT IN} 遇到 NULL 会整体不成立，必须显式放行。</p>
+     */
+    private LambdaQueryWrapper<Visit> activeVisits() {
+        return new LambdaQueryWrapper<Visit>()
+                .and(w -> w.isNull(Visit::getAppointmentId)
+                        .or()
+                        .notInSql(Visit::getAppointmentId,
+                                "SELECT id FROM sm_appointment WHERE status = 'CANCELLED'"));
+    }
+
+    /**
      * 患者端仪表盘：聚合当前登录患者的统计指标与即将到来挂号
      */
     @Override
@@ -98,8 +116,7 @@ public class StatsServiceImpl implements StatsService {
                 new LambdaQueryWrapper<Report>().eq(Report::getPatientId, userId)));
         s.setConsults(onlineConsultMapper.selectCount(
                 new LambdaQueryWrapper<OnlineConsultRecord>().eq(OnlineConsultRecord::getPatientId, userId)));
-        s.setVisits(visitMapper.selectCount(
-                new LambdaQueryWrapper<Visit>().eq(Visit::getPatientId, userId)));
+        s.setVisits(visitMapper.selectCount(activeVisits().eq(Visit::getPatientId, userId)));
         dash.setStats(s);
 
         // 即将到来挂号：复用既有分页接口取前 5 条
@@ -134,20 +151,20 @@ public class StatsServiceImpl implements StatsService {
         // 统计指标
         DashboardVOs.DoctorStats s = new DashboardVOs.DoctorStats();
         s.setTodayVisits(visitMapper.selectCount(
-                new LambdaQueryWrapper<Visit>()
+                activeVisits()
                         .eq(Visit::getDoctorId, userId)
                         .ge(Visit::getCreatedAt, dayStart)
                         .lt(Visit::getCreatedAt, dayEnd)));
         s.setWaiting(visitMapper.selectCount(
-                new LambdaQueryWrapper<Visit>()
+                activeVisits()
                         .eq(Visit::getDoctorId, userId)
                         .eq(Visit::getStatus, "WAITING")));
         s.setInProgress(visitMapper.selectCount(
-                new LambdaQueryWrapper<Visit>()
+                activeVisits()
                         .eq(Visit::getDoctorId, userId)
                         .eq(Visit::getStatus, "IN_PROGRESS")));
         s.setFinishedToday(visitMapper.selectCount(
-                new LambdaQueryWrapper<Visit>()
+                activeVisits()
                         .eq(Visit::getDoctorId, userId)
                         .eq(Visit::getStatus, "FINISHED")
                         .ge(Visit::getUpdatedAt, dayStart)
@@ -197,7 +214,7 @@ public class StatsServiceImpl implements StatsService {
                         .ge(Appointment::getCreatedAt, dayStart)
                         .lt(Appointment::getCreatedAt, dayEnd)));
         s.setTodayVisits(visitMapper.selectCount(
-                new LambdaQueryWrapper<Visit>()
+                activeVisits()
                         .ge(Visit::getCreatedAt, dayStart)
                         .lt(Visit::getCreatedAt, dayEnd)));
         s.setPendingConsults(onlineConsultMapper.selectCount(

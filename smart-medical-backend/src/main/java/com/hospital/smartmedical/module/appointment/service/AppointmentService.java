@@ -57,6 +57,19 @@ public interface AppointmentService {
     Appointment createAppointment(Long userId, Role role, Long doctorId, String department, LocalDateTime appointmentTime);
 
     /**
+     * 按号源下单（患者端选号页与 AI 挂号统一走这里）。
+     *
+     * <p>扣号用一条带条件的 UPDATE 完成，失败即号满；扣号、建单、建就诊进度在同一事务内，
+     * 任一步失败整体回滚，不会出现"号扣了单没生成"。</p>
+     *
+     * @param userId 当前登录患者 ID
+     * @param role   当前角色（仅 PATIENT）
+     * @param slotId 号源 ID（sm_schedule_slot.id）
+     * @return 新建挂号单（含 queueNo 序号）
+     */
+    Appointment createAppointmentBySlot(Long userId, Role role, Long slotId);
+
+    /**
      * 分页查询挂号列表（患者仅看本人、医生仅看本人接诊、管理员看全部）
      *
      * @param userId 当前登录用户 ID
@@ -77,6 +90,20 @@ public interface AppointmentService {
      * @return 挂号 VO
      */
     AppointmentVO getAppointmentDetail(Long id, Long userId, Role role);
+
+    /**
+     * 患者自助改约：同医生换时段，原子完成"退旧号 → 扣新号 → 建新单"。
+     *
+     * <p>不允许换医生（涉及费用差异，走取消重挂）；已叫号/已开始的单不能改约。
+     * 新单记录 rescheduled_from，旧单 cancel_reason=RESCHEDULE，形成可追溯链路。</p>
+     *
+     * @param id       原挂号单 ID
+     * @param userId   当前患者 ID
+     * @param role     当前角色（仅 PATIENT）
+     * @param toSlotId 目标号源 ID（必须属于同一医生）
+     * @return 新挂号单
+     */
+    Appointment rescheduleAppointment(Long id, Long userId, Role role, Long toSlotId);
 
     /**
      * 取消挂号（业务规则：仅患者本人、且单据未取消可操作，状态置为 CANCELLED）

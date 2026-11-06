@@ -87,6 +87,9 @@ public class DoctorRagService {
     /** Milvus 向量库是否启用（ai.llm.embedding.milvus.enabled） */
     private boolean milvusEnabled;
 
+    /** 当前向量模型的实际维度（由 probeModelDimension 在 rebuild 时从 embed 结果反推） */
+    private volatile int modelDimension;
+
     /**
      * 启动时构建科室介绍库索引。
      * 任一步骤失败均不影响服务启动（store/embeddingModel 置空，推荐自动降级为原关键词流程）。
@@ -111,9 +114,18 @@ public class DoctorRagService {
             // 先切换缓存目录到可写路径再触发模型加载（仅本地 BGE 需要，切换本身无害）
             initDjlCacheDir();
             EmbeddingModel model = createEmbeddingModel();
+            // 向量模型与向量库解耦：模型创建成功后立即保留，即便后续向量库连接失败，
+            // 语义缓存等仅需向量化的场景仍可复用该模型（不因 Milvus 不可用而整体失效）
+            this.embeddingModel = model;
             String modelName = model instanceof OpenAiEmbeddingModel
                     ? embeddingConfig.getModel() : "BGE-small-zh-v1.5";
-            EmbeddingStore<TextSegment> newStore = createStore();
+            // 关键修复：维度从模型实际 embed 结果反推，不再依赖配置默认 1024。
+            // 千问 text-embedding-v4 → 1024 维；本地 BGE-small-zh-v1.5 → 512 维；
+            // 若用配置硬塞，Milvus 集合维度与模型向量不匹配会导致 insert 失败且极难定位。
+            int dimension = probeModelDimension(model);
+            this.modelDimension = dimension;
+            log.info("向量模型维度反推：model={} → dimension={}", modelName, dimension);
+            EmbeddingStore<TextSegment> newStore = createStore(dimension);
             // Milvus 集合可能存在历史数据，全量重建先清空集合内全部向量（内存库新建即为空，无需清空）
             if (milvusEnabled) {
                 newStore.removeAll();
@@ -185,7 +197,7 @@ public class DoctorRagService {
                     milvusEnabled ? "Milvus" : "内存");
         } catch (Exception e) {
             log.error("科室介绍库向量化失败，RAG 推荐暂不可用：{}", e.getMessage(), e);
-            this.embeddingModel = null;
+            // 仅索引不可用；向量模型保留（供语义缓存等向量化场景复用）
             this.store = null;
         }
     }
@@ -315,14 +327,15 @@ public class DoctorRagService {
     /**
      * 创建向量库实例（Milvus 或内存）。
      *
-     * <p>Milvus 启用时连接 Milvus 并自动创建集合（dimension 与向量模型维度一致）；
+     * <p>Milvus 启用时连接 Milvus 并自动创建集合（dimension 由调用方从模型实际维度传入，
+     * 不再从 embeddingConfig 默认 1024 硬读，避免千问 1024 / BGE 512 维度不匹配）；
      * 否则使用内存 InMemoryEmbeddingStore（数据随服务重启丢失，仅演示用）。</p>
      *
+     * @param dimension 向量实际维度（由 probeModelDimension 从模型 embed 结果反推）
      * @return 可用的向量库实例
      */
-    private EmbeddingStore<TextSegment> createStore() {
+    private EmbeddingStore<TextSegment> createStore(int dimension) {
         if (milvusEnabled) {
-            int dimension = embeddingConfig.getDimension() != null ? embeddingConfig.getDimension() : 1024;
             MilvusEmbeddingStore.Builder builder = MilvusEmbeddingStore.builder()
                     .host(embeddingConfig.getMilvus().getHost())
                     .port(embeddingConfig.getMilvus().getPort())
@@ -339,6 +352,28 @@ public class DoctorRagService {
             return builder.build();
         }
         return new InMemoryEmbeddingStore<>();
+    }
+
+    /**
+     * 从模型实际 embed 结果反推向量维度。
+     * 避免配置默认 1024 与本地 BGE 512 不匹配导致 Milvus insert 失败（被 catch 成"RAG 暂不可用"，极难定位）。
+     *
+     * @param model 向量模型实例
+     * @return 实际维度（探测失败 fallback 到 embeddingConfig.getDimension() 或 1024）
+     */
+    private int probeModelDimension(EmbeddingModel model) {
+        try {
+            dev.langchain4j.data.embedding.Embedding emb = model.embed("维度探测").content();
+            // LangChain4j Embedding.vector() 返回 float[]，直接用 .length 拿维度
+            int dim = emb.vector().length;
+            if (dim > 0) {
+                return dim;
+            }
+        } catch (Exception e) {
+            log.warn("向量维度探测失败：{}，fallback 到 embeddingConfig 默认", e.getMessage());
+        }
+        Integer configured = embeddingConfig.getDimension();
+        return (configured != null && configured > 0) ? configured : 1024;
     }
 
     /**
@@ -442,6 +477,40 @@ public class DoctorRagService {
         vi.setCreatedAt(now);
         vi.setUpdatedAt(now);
         return vi;
+    }
+
+    /**
+     * 复用知识库同一向量模型对文本做向量化（语义缓存等复用方使用，避免重复加载模型）。
+     *
+     * @param text 待向量化文本
+     * @return 文本向量；向量模型不可用或文本为空时返回 null
+     */
+    public Embedding embedText(String text) {
+        EmbeddingModel model = embeddingModel;
+        if (model == null || text == null || text.isBlank()) {
+            return null;
+        }
+        return model.embed(text).content();
+    }
+
+    /**
+     * 当前向量模型名（语义缓存版本命名空间等使用）。
+     *
+     * @return 模型名（千问配置名或本地 BGE）
+     */
+    public String embeddingModelName() {
+        return modelName();
+    }
+
+    /**
+     * 当前向量模型的实际维度（由 rebuild() 时 probeModelDimension 从 embed 结果反推，
+     * 千问 text-embedding-v4 → 1024；本地 BGE-small-zh-v1.5 → 512）。
+     * 语义缓存等其他 Milvus 集合应复用此维度，避免硬编码 1024 与降级 BGE 512 不匹配。
+     *
+     * @return 向量维度（rebuild 前返回 0，调用方应在 rebuild 完成后再取）
+     */
+    public int embeddingDimension() {
+        return modelDimension;
     }
 
     /**

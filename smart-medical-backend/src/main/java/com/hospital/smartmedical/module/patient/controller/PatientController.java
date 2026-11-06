@@ -5,18 +5,31 @@ import com.hospital.smartmedical.module.patient.entity.Patient;
 import com.hospital.smartmedical.module.patient.service.PatientService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/patients")
 @RequiredArgsConstructor
 public class PatientController {
 
     private final PatientService patientService;
+
+    /**
+     * 是否把验证码回显给调用方。
+     *
+     * <p>默认 false：生产必须走短信/邮件，接口只返回"已发送"。
+     * 本地演示没有短信通道时，用 {@code --spring.profiles.active=demo}
+     * 或 {@code app.security.expose-verification-code=true} 打开回显。</p>
+     */
+    @Value("${app.security.expose-verification-code:false}")
+    private boolean exposeVerificationCode;
 
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@RequestBody Map<String, String> body) {
@@ -90,14 +103,19 @@ public class PatientController {
 
     /**
      * 忘记密码-发送验证码（无需登录）：body { username, idCard, phone }
-     * 校验用户名/身份证/手机号匹配后返回验证码（演示环境直接透出，正式环境走短信）。
+     * 校验用户名/身份证/手机号匹配后生成验证码。
+     * 默认只返回 {sent:true}；仅演示环境（expose-verification-code=true）才把 code 一并返回。
      */
     @PostMapping("/password-reset/code")
     public Result<Map<String, Object>> sendPasswordResetCode(@RequestBody Map<String, String> body) {
         String code = patientService.sendPasswordResetCode(
                 body.get("username"), body.get("idCard"), body.get("phone"));
         Map<String, Object> result = new HashMap<>();
-        result.put("code", code);
+        result.put("sent", true);
+        if (exposeVerificationCode) {
+            result.put("code", code);
+            log.info("[密码重置] 演示环境回显验证码：username={}，code={}", body.get("username"), code);
+        }
         return Result.ok(result);
     }
 

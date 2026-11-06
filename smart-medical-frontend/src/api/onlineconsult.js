@@ -13,6 +13,7 @@
  *   GET  /{id}/supplement-records   补充材料记录与次数
  */
 import request from './request'
+import { useUserStore } from '@/stores/user'
 
 /**
  * 查询患者自己的「挂号主治医生」列表（发起问诊时选择医生用）
@@ -129,4 +130,111 @@ export function closeConsult(id) {
  */
 export function fetchSupplementRecords(id) {
   return request.get(`/online-consults/${id}/supplement-records`)
+}
+
+/**
+ * 医生端：读取某问诊最新 AI 分析草稿（缓存命中场景，医生打开问诊页先调这个）。
+ * 若患者未发新消息、已有完整分析草稿，后端直接返回缓存 JSON，前端零等待渲染。
+ * 返回 null 表示无草稿，前端改走流式分析。
+ */
+export function fetchLatestDraft(id) {
+  return request.get(`/ai/doctor-assist/draft/${id}`)
+}
+
+/**
+ * 医生端 AI 辅助问诊分析（仅接诊医生本人可调用）
+ * 后端装配患者档案/预问诊摘要/历史病历/对话上下文 + 临床指南 RAG + LLM 结构化分析。
+ * 非流式版本保留给后端 /analyze 端点，页面统一使用流式 streamAnalyzeConsult。
+ *
+ * @param {number|string} id 问诊 ID
+ * @returns {Promise<object>} {sufficiency, missingItems, draftReply, diagnosis, advice, prescription[], patientInfo, preConsultSummary, medicalHistory, analyzedAt}
+ */
+export function analyzeConsult(id) {
+  // LLM 分析耗时长（通常 10~60s），单独放宽超时，避免默认 15s 超时导致自动分析静默失败
+  return request.post('/ai/doctor-assist/analyze', { consultId: Number(id) }, { timeout: 120000 })
+}
+
+/**
+ * 医生端 AI 辅助问诊分析（流式，SSE）。
+ * 事件序列：profile（患者档案区秒出）→ section*（顶层字段完成，分节渲染）→
+ * token*（draftReply 增量文本，打字机效果）→ done（完整结果）→ error。
+ * 实现方式与 aiagent.js 一致：fetch + ReadableStream 逐帧解析（后端响应可能被代理缓冲，故用 fetch 而非 EventSource）。
+ * @param {number|string} id 问诊 ID
+ * @param {object} handlers 事件回调
+ * @param {Function} [handlers.onProfile] 档案区数据 {patientInfo, preConsultSummary, medicalHistory}
+ * @param {Function} [handlers.onSection] 字段完成（key, value）
+ * @param {Function} [handlers.onToken] 文本增量（delta）
+ * @param {Function} [handlers.onDone] 完整结果（含 analyzedAt / inHospital）
+ * @param {Function} [handlers.onError] 错误（Error）
+ * @returns {Promise<void>}
+ */
+export function streamAnalyzeConsult(id, { onProfile, onSection, onToken, onDone, onError } = {}) {
+  const userStore = useUserStore()
+  return fetch('/api/smart-medical/v1/ai/doctor-assist/analyze-stream', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${userStore.token}`,
+    },
+    body: JSON.stringify({ consultId: Number(id) }),
+  }).then(async (resp) => {
+    if (!resp.ok || !resp.body) {
+      throw new Error(`分析请求失败（${resp.status}）`)
+    }
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let settled = false
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        // 按空行切分 SSE 帧，最后可能不完整留待下轮
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop()
+        for (const frame of frames) {
+          const ev = parseSseFrame(frame)
+          if (!ev) continue
+          if (ev.name === 'profile') {
+            onProfile && onProfile(JSON.parse(ev.data || '{}'))
+          } else if (ev.name === 'section') {
+            const p = JSON.parse(ev.data || '{}')
+            onSection && onSection(p.key, p.value)
+          } else if (ev.name === 'token') {
+            onToken && onToken(JSON.parse(ev.data || '{}').delta || '')
+          } else if (ev.name === 'done') {
+            settled = true
+            onDone && onDone(JSON.parse(ev.data || '{}'))
+          } else if (ev.name === 'error') {
+            settled = true
+            onError && onError(new Error(JSON.parse(ev.data || '{}').message || 'AI 分析失败'))
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+      if (!settled) {
+        onError && onError(new Error('连接已断开，请重试'))
+      }
+    }
+  })
+}
+
+/**
+ * 解析单个 SSE 帧：提取 event 名与 data 内容。
+ * @param {string} frame 如 "event: token\ndata: {...}"
+ * @returns {{name: string, data: string}|null}
+ */
+function parseSseFrame(frame) {
+  let name = null
+  let data = null
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) {
+      name = line.slice(6).trim()
+    } else if (line.startsWith('data:')) {
+      data = line.slice(5).trim()
+    }
+  }
+  return name ? { name, data: data || '' } : null
 }

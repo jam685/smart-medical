@@ -5,9 +5,10 @@
  * 数据来源（真实接口）：
  *   GET  /appointments/doctors 可约医生（科室列表由医生所属科室去重派生）
  *   POST /appointments          创建挂号（写 sm_appointment，后端联动建 sm_visit）
- * 唯一保留的演示数据：号源余量（remainOf），因后端尚无号源表，后续建表后替换。
+ *   GET  /schedules/days      未来 7 天号源概览（日期条标"有号/约满"）
+ *   GET  /schedules/slots     某医生某天的号源时段与余号
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -15,6 +16,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { fetchAvailableDoctors, createAppointment } from '@/api/appointment'
+import { fetchScheduleSlots, fetchScheduleDays } from '@/api/schedule'
 
 /** 路由实例：用于返回挂号列表、提交成功后跳转 */
 const router = useRouter()
@@ -173,28 +175,103 @@ const dateOptions = buildDateOptions()
 /** 已选日期下标（-1 未选） */
 const selectedDateIndex = ref(-1)
 
-/**
- * 号源时段模板：上午/下午各 6 个半小时号段
- */
-const slotGroups = [
-  { period: '上午', times: ['08:00 - 08:30', '08:30 - 09:00', '09:00 - 09:30', '09:30 - 10:00', '10:00 - 10:30', '10:30 - 11:00'] },
-  { period: '下午', times: ['14:00 - 14:30', '14:30 - 15:00', '15:00 - 15:30', '15:30 - 16:00', '16:00 - 16:30', '16:30 - 17:00'] },
-]
+/** 已选号源对象（后端号源行；未选为 null） */
+const selectedSlot = ref(null)
 
-/** 已选号源时段字符串 */
-const selectedSlot = ref('')
+/** 当前日期下的号源时段（GET /schedules/slots） */
+const scheduleSlots = ref([])
+
+/** 号源加载中 */
+const slotLoading = ref(false)
+
+/** 未来 7 天每天的号源概览：date -> { totalRemain, slotCount, hasBookable } */
+const daySummaries = ref({})
+
+/** 今天（dateOptions 第 1 项固定为今天） */
+const todayStr = dateOptions[0].date
+
+/** 当前选中日期字符串（yyyy-MM-dd） */
+const currentDateStr = computed(() =>
+  selectedDateIndex.value === -1 ? '' : dateOptions[selectedDateIndex.value].date
+)
 
 /**
- * 号源剩余数量（⚠️ 演示用前端规则生成：后端尚无号源表，建表后改为接口数据）
- * @param {number} dateIndex 日期下标
- * @param {string} time 号源时间段
- * @returns {number} 0~8，0 表示号满
+ * 日期条上的号源标签：有号 / 约满 / 已过 / 无排班
+ * @param {object} d 日期项 {date}
+ * @returns {string} 标签文案
  */
-function remainOf(dateIndex, time) {
-  let hash = dateIndex * 7
-  for (const ch of time) hash += ch.charCodeAt(0)
-  return hash % 9
+function dayTag(d) {
+  const s = daySummaries.value[d.date]
+  if (!s) return ''
+  if (s.slotCount === 0) return '无排班'
+  if (s.hasBookable) return '有号'
+  return d.date <= todayStr ? '已过' : '约满'
 }
+
+/**
+ * 号源按时段分上午/下午两组（后端没排班的时段不展示，空组不渲染）
+ */
+const slotGroups = computed(() => {
+  const groups = [
+    { key: 'AM', period: '上午', slots: [] },
+    { key: 'PM', period: '下午', slots: [] },
+  ]
+  for (const s of scheduleSlots.value) {
+    const g = groups.find(x => x.key === s.period)
+    if (g) g.slots.push(s)
+  }
+  return groups.filter(g => g.slots.length > 0)
+})
+
+/**
+ * 加载所选医生未来 7 天的号源概览（日期条上标"有号/约满"）
+ */
+async function loadDaySummaries() {
+  if (!selectedDoctor.value) {
+    daySummaries.value = {}
+    return
+  }
+  try {
+    const days = await fetchScheduleDays(selectedDoctor.value.id, dateOptions[0].date, dateOptions.length)
+    const map = {}
+    for (const d of days || []) map[d.date] = d
+    daySummaries.value = map
+  } catch (e) {
+    daySummaries.value = {}
+  }
+}
+
+/**
+ * 加载所选医生在选中日期的号源
+ */
+async function loadSlots() {
+  if (!selectedDoctor.value || !currentDateStr.value) {
+    scheduleSlots.value = []
+    return
+  }
+  slotLoading.value = true
+  try {
+    scheduleSlots.value = (await fetchScheduleSlots(selectedDoctor.value.id, currentDateStr.value)) || []
+  } catch (e) {
+    scheduleSlots.value = []
+  } finally {
+    slotLoading.value = false
+  }
+}
+
+/** 医生切换：清空日期与号源，重新拉 7 天概览 */
+watch(selectedDoctor, async () => {
+  selectedDateIndex.value = -1
+  selectedSlot.value = null
+  scheduleSlots.value = []
+  await loadDaySummaries()
+})
+
+/** 日期切换：清空已选号源并拉当天号源 */
+watch(selectedDateIndex, async () => {
+  selectedSlot.value = null
+  await loadSlots()
+})
 
 // ============================================================
 // 四、步骤导航与提交
@@ -241,15 +318,14 @@ function chooseDoctor(doc) {
  */
 function chooseDate(index) {
   selectedDateIndex.value = index
-  selectedSlot.value = ''
 }
 
 /**
  * 选择号源
  * @param {string} time 号源时间段
  */
-function chooseSlot(time) {
-  selectedSlot.value = time
+function chooseSlot(slot) {
+  selectedSlot.value = slot
 }
 
 /** 进入下一步 */
@@ -286,9 +362,11 @@ async function submitOrder() {
   try {
     // 载荷字段与后端 CreateAppointmentRequest 对齐；患者 ID 由后端从 JWT 解析，无需前端传
     const payload = {
+      // 号源 ID 是下单的关键：后端据此原子扣号，号满时直接拒绝
+      scheduleId: selectedSlot.value.id,
       doctorId: selectedDoctor.value.id,
       department: selectedDept.value.name,
-      appointmentTime: `${chosenDate.value.date} ${selectedSlot.value.split(' - ')[0]}:00`,
+      appointmentTime: `${chosenDate.value.date} ${selectedSlot.value.startTime}:00`,
     }
     await createAppointment(payload)
     ElMessage.success('挂号成功！请按时前往医院就诊')
@@ -439,26 +517,36 @@ onMounted(async () => {
         >
           <span class="date-week">{{ d.week }}</span>
           <span class="date-day">{{ d.month }}/{{ d.day }}</span>
+          <span
+            v-if="daySummaries[d.date]"
+            :class="['date-tag', { full: !daySummaries[d.date].hasBookable }]"
+          >
+            {{ dayTag(d) }}
+          </span>
         </div>
       </div>
 
       <p v-if="selectedDateIndex !== -1" class="panel-hint sub">选择号源时段</p>
-      <!-- 号源时段 -->
+      <!-- 号源时段：数据来自 GET /schedules/slots，余号为后端真实值 -->
       <div v-if="selectedDateIndex !== -1" class="slot-groups">
+        <div v-if="slotLoading" class="slot-empty">号源加载中…</div>
+        <div v-else-if="slotGroups.length === 0" class="slot-empty">
+          该医生当日暂无排班，请选择其他日期
+        </div>
         <div v-for="g in slotGroups" :key="g.period" class="slot-group">
           <div class="slot-group-title">
             <el-icon><Clock /></el-icon>{{ g.period }}
           </div>
           <div class="slot-row">
             <button
-              v-for="t in g.times" :key="t"
-              :class="['slot-btn', { active: selectedSlot === t, full: remainOf(selectedDateIndex, t) === 0 }]"
-              :disabled="remainOf(selectedDateIndex, t) === 0"
-              @click="chooseSlot(t)"
+              v-for="s in g.slots" :key="s.id"
+              :class="['slot-btn', { active: selectedSlot?.id === s.id, full: !s.bookable }]"
+              :disabled="!s.bookable"
+              @click="chooseSlot(s)"
             >
-              <span class="slot-time">{{ t }}</span>
+              <span class="slot-time">{{ s.startTime }} - {{ s.endTime }}</span>
               <span class="slot-remain">
-                {{ remainOf(selectedDateIndex, t) === 0 ? '号满' : `剩 ${remainOf(selectedDateIndex, t)}` }}
+                {{ s.bookable ? `剩 ${s.remain}` : (s.status !== 'OPEN' ? '停诊' : '号满') }}
               </span>
             </button>
           </div>
@@ -476,7 +564,10 @@ onMounted(async () => {
           <li><span class="c-label">接诊医生</span><span class="c-value">{{ selectedDoctor?.realName }} · {{ selectedDoctor?.title }}</span></li>
           <li>
             <span class="c-label"><el-icon><Clock /></el-icon>就诊时间</span>
-            <span class="c-value">{{ chosenDate?.date }}（{{ chosenDate?.week }}）{{ selectedSlot }}</span>
+            <span class="c-value">
+              {{ chosenDate?.date }}（{{ chosenDate?.week }}）
+              {{ selectedSlot?.startTime }} - {{ selectedSlot?.endTime }}
+            </span>
           </li>
           <li>
             <span class="c-label"><el-icon><Location /></el-icon>就诊地点</span>
@@ -611,6 +702,10 @@ onMounted(async () => {
 .date-week { display: block; font-size: 12px; color: #8492A6; margin-bottom: 4px; }
 .date-day { font-size: 15px; font-weight: 700; color: #1A2B45; }
 .date-item.active .date-week, .date-item.active .date-day { color: #fff; }
+.date-tag { margin-top: 2px; font-size: 11px; color: #0E9F6E; }
+.date-tag.full { color: #A7B1BF; }
+.date-item.active .date-tag { color: #DBEAFE; }
+.slot-empty { padding: 18px; text-align: center; color: #6B7280; font-size: 13px; background: #F8FAFC; border-radius: 8px; }
 
 .slot-groups { display: flex; flex-direction: column; gap: 18px; }
 .slot-group-title { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: #4A5A70; margin-bottom: 10px; }

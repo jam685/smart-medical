@@ -109,12 +109,22 @@ public class OnlineConsultServiceImpl implements OnlineConsultService {
      * 未接诊（无就诊记录、WAITING 候诊或 CALLING 已叫号）时，医生与患者均不能开启对话。
      */
     private void ensureDoctorAccepted(Long patientId, Long doctorId) {
-        String status = latestVisitStatus(patientId, doctorId);
-        boolean accepted = "IN_PROGRESS".equalsIgnoreCase(status)
-                || "FINISHED".equalsIgnoreCase(status);
-        if (!accepted) {
+        if (!isDoctorAccepted(patientId, doctorId)) {
             throw new BizException("医生尚未接诊，暂时无法开始对话");
         }
+    }
+
+    /**
+     * 医生是否已接诊（接诊门禁与「我的医生」列表共用的唯一判据）。
+     *
+     * @param patientId 患者 ID
+     * @param doctorId  医生 ID
+     * @return true=已接诊（IN_PROGRESS / FINISHED），false=未接诊
+     */
+    private boolean isDoctorAccepted(Long patientId, Long doctorId) {
+        String status = latestVisitStatus(patientId, doctorId);
+        return "IN_PROGRESS".equalsIgnoreCase(status)
+                || "FINISHED".equalsIgnoreCase(status);
     }
 
     /**
@@ -173,8 +183,12 @@ public class OnlineConsultServiceImpl implements OnlineConsultService {
      * 实现：先查 sm_appointment 中该患者所有有效挂号（排除 CANCELLED），按 doctorId 去重，
      * 再批量查医生并返回脱敏视图。</p>
      *
+     * <p>每条记录额外返回 {@code accepted} 标记，取值与 {@link #ensureDoctorAccepted} 的接诊门禁
+     * 保持一致：false 表示医生尚未接诊，前端应置灰并提示「医生接诊后可发起问诊」，
+     * 避免出现「列表里能选、点进去却报错」的割裂体验。</p>
+     *
      * @param patientId 患者 ID
-     * @return 该患者的挂号主治医生列表（不含密码）
+     * @return 该患者的挂号主治医生列表（不含密码，含接诊标记）
      */
     @Override
     public List<OnlineDoctorVO> getMyDoctors(Long patientId) {
@@ -201,7 +215,10 @@ public class OnlineConsultServiceImpl implements OnlineConsultService {
         for (Long doctorId : doctorIds) {
             Doctor doctor = doctorMap.get(doctorId);
             if (doctor != null) {
-                result.add(OnlineDoctorVO.from(doctor));
+                OnlineDoctorVO vo = OnlineDoctorVO.from(doctor);
+                // 接诊标记：与 createConsult 的接诊门禁同一判据，保证「能选」与「能发起」一致
+                vo.setAccepted(isDoctorAccepted(patientId, doctor.getId()));
+                result.add(vo);
             }
         }
         return result;
@@ -211,7 +228,8 @@ public class OnlineConsultServiceImpl implements OnlineConsultService {
 
     @Override
     @Transactional
-    public OnlineConsultRecord createConsult(Long patientId, Long doctorId, String department, String content) {
+    public OnlineConsultRecord createConsult(Long patientId, Long doctorId, String department, String content,
+                                             String preConsultSessionId) {
         Doctor doctor = doctorMapper.selectById(doctorId);
         if (doctor == null) {
             throw new BizException("医生不存在");
@@ -243,6 +261,10 @@ public class OnlineConsultServiceImpl implements OnlineConsultService {
         consult.setStartTime(LocalDateTime.now());
         consult.setCreatedAt(LocalDateTime.now());
         consult.setUpdatedAt(LocalDateTime.now());
+        // 记录关联的 AI 预问诊 sessionId（可为 null：患者没走过 AI 预问诊）
+        if (preConsultSessionId != null && !preConsultSessionId.isBlank()) {
+            consult.setPreConsultSessionId(preConsultSessionId);
+        }
         onlineConsultMapper.insert(consult);
 
         // 主诉/描述作为首条 PATIENT 消息写入消息表

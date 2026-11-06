@@ -30,8 +30,23 @@ public class AppointmentVO {
     /** 就诊时间 sm_appointment.appointment_time（yyyy-MM-dd HH:mm:ss） */
     private String appointmentTime;
 
+    /** 号源 ID（空表示历史数据/无号源挂号） */
+    private Long scheduleId;
+
+    /** 时段内序号（叫号顺序），空表示历史数据 */
+    private Integer queueNo;
+
+    /** 就诊时段开始时间（yyyy-MM-dd HH:mm:ss） */
+    private String slotStart;
+
     /** 挂号状态：PENDING 待确认 / CONFIRMED 待就诊 / FINISHED 已完成 / CANCELLED 已取消 */
     private String status;
+
+    /** 取消原因：CANCEL 患者取消 / SUSPEND 医生停诊 / RESCHEDULE 改约（仅已取消时有值） */
+    private String cancelReason;
+
+    /** 改约来源挂号单 ID（本单由改约产生时非空） */
+    private Long rescheduledFrom;
 
     /** 挂号创建时间（yyyy-MM-dd HH:mm:ss） */
     private String createdAt;
@@ -68,7 +83,12 @@ public class AppointmentVO {
         vo.setDoctorId(appt.getDoctorId());
         vo.setDepartment(appt.getDepartment());
         vo.setAppointmentTime(appt.getAppointmentTime() == null ? null : appt.getAppointmentTime().format(TIME_FMT));
+        vo.setScheduleId(appt.getScheduleId());
+        vo.setQueueNo(appt.getQueueNo());
+        vo.setSlotStart(appt.getSlotStart() == null ? null : appt.getSlotStart().format(TIME_FMT));
         vo.setStatus(appt.getStatus());
+        vo.setCancelReason(appt.getCancelReason());
+        vo.setRescheduledFrom(appt.getRescheduledFrom());
         vo.setCreatedAt(appt.getCreatedAt() == null ? null : appt.getCreatedAt().format(TIME_FMT));
         vo.setOrderNo(buildOrderNo(appt));
         if (doctor != null) {

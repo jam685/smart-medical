@@ -1,0 +1,5 @@
+业务节点-第1次(挂号流程是什么): code=0 cached=False score= replyLen=582
+业务节点-第2次(挂号流程是什么): code=0 cached=False score= replyLen=531
+对话节点-第1次(体检前需要注意什么): code=0 cached=False score= replyLen=258
+对话节点-第2次(体检前需要注意什么): code=0 cached=True score=1.0 replyLen=258
+STATS={"enabled":true,"shadow":false,"mode":"hit-returnï¼å½ä¸­è¿åï¼","sampleRate":100,"threshold":0.92,"flowTtlDays":30,"commonTtlDays":3,"requireDisclaimer":false,"collection":"sm_semantic_cache","storeReady":true,"total":4,"hit":1,"hitRate":0.25,"returned":1,"returnedRate":0.25,"savedChars":88,"estimatedSavedTokens":88,"expiredHits":0,"writeFailures":0,"dedupSkipped":0,"orphansCleaned":0,"writtenFlow":0,"writtenCommon":1,"blockedByCategory":0,"rejectedOnRead":0,"queryVectorCacheSize":2,"queryVectorHits":2,"queryVectorMisses":2,"written":1,"skipped":0}

@@ -3,6 +3,7 @@ package com.hospital.smartmedical.module.doctor.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.exception.BizException;
+import com.hospital.smartmedical.common.security.DemoMode;
 import com.hospital.smartmedical.common.security.JwtUtil;
 import com.hospital.smartmedical.common.storage.FileStorageService;
 import com.hospital.smartmedical.module.appointment.entity.Appointment;
@@ -15,6 +16,7 @@ import com.hospital.smartmedical.module.patient.mapper.PatientMapper;
 import com.hospital.smartmedical.module.visit.entity.Visit;
 import com.hospital.smartmedical.module.visit.mapper.VisitMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -34,9 +36,8 @@ public class DoctorServiceImpl implements DoctorService {
     private final JwtUtil jwtUtil;
     private final FileStorageService fileStorageService;
 
-    // Demo 密码 hash: 123456
-    private static final String DEMO_PASSWORD_HASH =
-            "$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi";
+    /** 演示模式（仅 demo profile 下存在）；默认只认数据库中的真实密码 */
+    private final ObjectProvider<DemoMode> demoModeProvider;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -68,8 +69,12 @@ public class DoctorServiceImpl implements DoctorService {
             throw new BizException("医生不存在");
         }
 
-        // 密码校验
-        boolean matched = passwordEncoder.matches(password, DEMO_PASSWORD_HASH);
+        // 密码校验：默认只认真实密码；仅 demo profile 下额外接受演示口令
+        boolean matched = false;
+        DemoMode demoMode = demoModeProvider.getIfAvailable();
+        if (demoMode != null && demoMode.matches(password)) {
+            matched = true;
+        }
         if (!matched && doctor.getPassword() != null) {
             matched = passwordEncoder.matches(password, doctor.getPassword());
         }
@@ -137,7 +142,7 @@ public class DoctorServiceImpl implements DoctorService {
         if (doctor == null) {
             throw new BizException("医生不存在");
         }
-        String avatarUrl = fileStorageService.saveAvatar(file, "doctor_" + id);
+        String avatarUrl = fileStorageService.saveAvatar(file);
         doctor.setAvatar(avatarUrl);
         doctor.setUpdatedAt(LocalDateTime.now());
         doctorMapper.updateById(doctor);

@@ -12,8 +12,8 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/smart_medical?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false&rewriteBatchedStatements=true
-    username: root
-    password: 123456
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
     # 高并发调优：连接池扩容（默认仅 10 连接，并发登录/查询会排队甚至报错）
     # 提示：本机 MySQL max_connections 需同步调大（默认 151），否则池扩大会触发 MySQL 拒绝连接
     hikari:
@@ -32,13 +32,22 @@ spring:
       max-request-size: 5MB
   data:
     redis:
-      host: localhost
-      port: 6379
+      # Docker 部署的 Redis：默认 localhost:6379；若容器映射了其他端口或设置了密码，改下面三项（也可用环境变量覆盖）
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
       timeout: 5000ms
 
 # 本地文件上传（Demo 头像等，存服务运行目录下 uploads/）
 app:
   upload-dir: ./uploads
+  # 号源兜底：默认关闭（生产号源必须来自管理端真实排班）；demo profile 下由 application-demo.yml 打开
+  schedule:
+    auto-seed: false
+  security:
+    # 是否在"忘记密码"接口回显验证码：默认 false，生产走短信；demo profile 下打开
+    expose-verification-code: false
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
@@ -55,8 +64,10 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 # JWT
+# 密钥不再硬编码：从环境变量 JWT_SECRET 或本地 ai-secret.yml（已被 .gitignore 忽略）读取。
+# 缺失或少于 32 字节时应用启动失败（JwtUtil 启动校验），避免用弱密钥上线。
 jwt:
-  secret: smart-medical-local-demo-secret-key-2026-demo-only
+  secret: ${JWT_SECRET:}
   expire-minutes: 1440  # 24h
 
 # Caffeine
@@ -68,8 +79,23 @@ caffeine:
 ai:
   # true=本地规则模拟回复（开发演示用，不发外部请求）；false=调用真实大模型（需配置 ai.llm）
   mock-mode: false
-  # 会话 State 存储：memory=内存（默认，无 Redis 也可运行）/ redis=Redis 持久化（需本机 Redis 已启动）
-  state-store: memory
+  # 会话 State 存储：redis=Redis 持久化（重启后会话不丢，key: ai:session:{sessionId}，TTL 24h）
+  # 切回内存：把下面改成 memory（MemoryAiStateStore 仅在 memory 时生效）
+  state-store: redis
+  # Redis 故障时的降级熔断时长（秒）：失败后这段时间内直接走内存，不再尝试 Redis，避免每个请求都等待连接超时
+  state-store-fallback-cooldown-seconds: 30
+  # 语义缓存（P2 命中返回：相似问题直接回放缓存答案省 LLM token；shadow=true 退回影子统计）
+  # v3 起引入「分类白名单 + 按类 TTL」：只缓存流程类与通用常识类，症状/用药类一律不入缓存
+  semantic-cache:
+    enabled: true                        # 总开关（false 时完全不参与）
+    shadow: false                        # false=P2 命中返回（向量命中+Redis 答案未过期则直接回复）；true=影子统计
+    threshold: 0.92                      # 命中相似度阈值（余弦相似度，保守）
+    flow-ttl-days: 30                    # 流程/指引类缓存 TTL（天）：挂号流程、就诊须知、医保报销等
+    common-ttl-days: 3                   # 通用常识类缓存 TTL（天）：挂什么科、体检注意等
+    require-disclaimer: false            # true=答案必须含免责声明才允许返回（开启前建议先让提示词输出声明）
+    collection: "sm_semantic_cache"      # 缓存向量集合（独立于知识库集合）
+    top-k: 3                             # 检索候选数
+    sample-rate: 100                     # 命中返回灰度采样率（0-100）：100=命中即返回；10=仅 10% 命中真正返回，其余只统计（影子模式忽略）
   llm:
     # OpenAI 兼容大模型配置（接入真实模型时填写，mock-mode=false 时生效）
     base-url: "https://api.deepseek.com"   # DeepSeek OpenAI 兼容地址

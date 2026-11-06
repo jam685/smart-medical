@@ -45,6 +45,14 @@ public class OnlineDoctorVO implements Serializable {
     private String onlineStatus;
 
     /**
+     * 是否已接诊（仅「我的挂号主治医生」接口返回该字段）。
+     *
+     * <p>true = 医生已接诊，可发起在线问诊；false = 已挂号但医生尚未接诊，暂不能发起。
+     * 其它接口该字段为 null，前端可按需忽略。</p>
+     */
+    private Boolean accepted;
+
+    /**
      * 由 Doctor 实体构造安全的视图对象，剔除密码字段。
      *
      * @param d 医生实体

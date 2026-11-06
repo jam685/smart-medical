@@ -53,6 +53,16 @@ export function createAppointment(payload) {
 }
 
 /**
+ * 患者自助改约（同医生换时段）
+ * @param {number|string} id 原挂号单 ID
+ * @param {number|string} toSlotId 目标号源 ID
+ * @returns {Promise<object>} 新挂号单
+ */
+export function rescheduleAppointment(id, toSlotId) {
+  return request.post(`/appointments/${id}/reschedule`, { toSlotId })
+}
+
+/**
  * 取消挂号（后端校验：仅本人、且单据非已取消/已完成状态）
  * @param {number|string} id 挂号单 ID
  * @returns {Promise<void>} 成功无返回体，失败由请求拦截器统一弹错

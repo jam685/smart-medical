@@ -12,6 +12,10 @@ import com.hospital.smartmedical.module.appointment.service.AppointmentService;
 import com.hospital.smartmedical.module.appointment.vo.AppointmentVO;
 import com.hospital.smartmedical.module.doctor.entity.Doctor;
 import com.hospital.smartmedical.module.doctor.mapper.DoctorMapper;
+import com.hospital.smartmedical.module.patient.mapper.PatientMapper;
+import com.hospital.smartmedical.module.schedule.entity.ScheduleSlot;
+import com.hospital.smartmedical.module.schedule.mapper.ScheduleSlotMapper;
+import com.hospital.smartmedical.module.schedule.vo.ScheduleSlotVO;
 import com.hospital.smartmedical.module.visit.entity.Visit;
 import com.hospital.smartmedical.module.visit.mapper.VisitMapper;
 import lombok.RequiredArgsConstructor;
@@ -22,12 +26,13 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  * 挂号业务服务实现
- * 数据来源：sm_appointment（挂号）+ sm_doctor（医生信息）+ sm_visit（创建挂号时联动生成就诊进度）
+ * 数据来源：sm_appointment（挂号）+ sm_doctor（医生信息）+ sm_schedule_slot（号源）+ sm_visit（就诊进度）
  */
 @Slf4j
 @Service
@@ -40,6 +45,13 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final DoctorMapper doctorMapper;
     /** 就诊进度 Mapper：创建挂号成功后联动创建 WAITING 状态的就诊记录 */
     private final VisitMapper visitMapper;
+    /** 号源 Mapper：扣号/回补（带条件的单条 UPDATE） */
+    private final ScheduleSlotMapper scheduleSlotMapper;
+    /** 患者 Mapper：仅用于下单时锁患者行，串行化同一患者的重复提交 */
+    private final PatientMapper patientMapper;
+
+    /** 进度节点时间格式 */
+    private static final DateTimeFormatter NODE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /**
      * 查询可挂号医生：仅返回在线（ONLINE）医生，支持科室与姓名/工号过滤
@@ -124,33 +136,97 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     /**
-     * 创建挂号并联动创建就诊进度（同一事务，任一失败整体回滚）
+     * 创建挂号（兼容旧调用）：先按「医生 + 日期 + 时段」匹配号源，命中则走号源链路；
+     * 未建号源的历史数据仍可走无号源链路，保证旧接口不中断。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Appointment createAppointment(Long userId, Role role, Long doctorId, String department,
                                          LocalDateTime appointmentTime) {
-        // 权限：仅患者角色可以挂号
         if (role != Role.PATIENT) {
             throw new BizException(ErrorCode.FORBIDDEN);
         }
-        if (doctorId == null) {
+        if (doctorId == null || appointmentTime == null) {
             throw new BizException(ErrorCode.PARAM_ERROR);
         }
-        // 业务校验：必须选择就诊时间，且不能预约过去的时间
-        if (appointmentTime == null) {
+        ScheduleSlot slot = findSlotByTime(doctorId, appointmentTime);
+        if (slot != null) {
+            return createAppointmentBySlot(userId, role, slot.getId());
+        }
+        return createLegacyAppointment(userId, doctorId, department, appointmentTime);
+    }
+
+    /**
+     * 按号源下单：锁患者行 → 校验号源 → 原子扣号 → 落挂号单 → 建就诊进度。
+     *
+     * <p>并发控制只有一处：{@code UPDATE ... WHERE booked_count < total_count}。
+     * 返回 0 就是号满，不做重试；扣号与落单同事务，落单失败自动回滚号源。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Appointment createAppointmentBySlot(Long userId, Role role, Long slotId) {
+        if (role != Role.PATIENT) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        if (slotId == null) {
             throw new BizException(ErrorCode.PARAM_ERROR);
         }
+        // 同一患者的并发下单串行化：双击/重放只会产生一张单（不同患者互不阻塞）
+        patientMapper.lockById(userId);
+
+        ScheduleSlot slot = scheduleSlotMapper.selectById(slotId);
+        if (slot == null || !"OPEN".equals(slot.getStatus())) {
+            throw new BizException("该号源不可预约，请刷新后重新选择");
+        }
+        LocalDateTime start = LocalDateTime.of(slot.getWorkDate(), slot.getStartTime());
+        if (!start.isAfter(LocalDateTime.now().plusMinutes(ScheduleSlotVO.BOOK_LEAD_MINUTES))) {
+            throw new BizException("该时段已停止预约，请选择其他时段");
+        }
+        if (hasAppointmentOnDate(userId, slot.getDoctorId(), slot.getWorkDate())) {
+            throw new BizException("您当天已挂过该医生的号，请勿重复预约");
+        }
+        // ★ 唯一的并发控制点：条件更新，0 行即号满
+        if (scheduleSlotMapper.deduct(slotId) == 0) {
+            throw new BizException("该时段号源已约满，请选择其他时段");
+        }
+        // 更新已清空 MyBatis 一级缓存，这里读到的是扣减后的新值，直接作为时段内序号
+        ScheduleSlot after = scheduleSlotMapper.selectById(slotId);
+        int queueNo = after == null || after.getBookedCount() == null ? 1 : after.getBookedCount();
+
+        Doctor doctor = doctorMapper.selectById(slot.getDoctorId());
+        Appointment appt = new Appointment();
+        appt.setPatientId(userId);
+        appt.setDoctorId(slot.getDoctorId());
+        appt.setDepartment(StringUtils.hasText(slot.getDepartment())
+                ? slot.getDepartment()
+                : (doctor == null ? null : doctor.getDepartment()));
+        appt.setScheduleId(slotId);
+        appt.setQueueNo(queueNo);
+        appt.setSlotStart(start);
+        appt.setAppointmentTime(start);
+        appt.setStatus("PENDING");
+        appt.setCreatedAt(LocalDateTime.now());
+        appt.setUpdatedAt(LocalDateTime.now());
+        appointmentMapper.insert(appt);
+
+        createWaitingVisit(appt);
+        log.info("号源挂号成功: appointmentId={}, slotId={}, patientId={}, doctorId={}, queueNo={}, start={}",
+                appt.getId(), slotId, userId, slot.getDoctorId(), queueNo, start);
+        return appt;
+    }
+
+    /**
+     * 无号源兼容链路（历史数据/脚本直接指定时间）：不扣号，仅在预约时间合法时落单。
+     */
+    private Appointment createLegacyAppointment(Long userId, Long doctorId, String department,
+                                               LocalDateTime appointmentTime) {
         if (appointmentTime.isBefore(LocalDateTime.now())) {
             throw new BizException("就诊时间不能早于当前时间");
         }
-
         Doctor doctor = doctorMapper.selectById(doctorId);
         if (doctor == null) {
             throw new BizException(ErrorCode.NOT_FOUND);
         }
-
-        // 组装挂号单：科室以入参为准，未传时取医生所属科室；初始状态 PENDING
         Appointment appt = new Appointment();
         appt.setPatientId(userId);
         appt.setDoctorId(doctorId);
@@ -160,24 +236,41 @@ public class AppointmentServiceImpl implements AppointmentService {
         appt.setCreatedAt(LocalDateTime.now());
         appt.setUpdatedAt(LocalDateTime.now());
         appointmentMapper.insert(appt);
+        createWaitingVisit(appt);
+        log.info("挂号创建成功（无号源兼容链路）: appointmentId={}, patientId={}, doctorId={}, time={}",
+                appt.getId(), userId, doctorId, appointmentTime);
+        return appt;
+    }
 
-        // 自动创建就诊进度 Visit（状态 WAITING，进度节点初始化包含"挂号"节点）
+    /**
+     * 按「医生 + 日期 + 时段起点」定位号源（旧接口兼容用）。
+     *
+     * @return 命中的号源；无号源返回 null
+     */
+    private ScheduleSlot findSlotByTime(Long doctorId, LocalDateTime time) {
+        return scheduleSlotMapper.selectOne(new LambdaQueryWrapper<ScheduleSlot>()
+                .eq(ScheduleSlot::getDoctorId, doctorId)
+                .eq(ScheduleSlot::getWorkDate, time.toLocalDate())
+                .le(ScheduleSlot::getStartTime, time.toLocalTime())
+                .gt(ScheduleSlot::getEndTime, time.toLocalTime())
+                .last("LIMIT 1"));
+    }
+
+    /**
+     * 建就诊进度（WAITING，初始节点"挂号"）
+     */
+    private void createWaitingVisit(Appointment appt) {
         Visit visit = new Visit();
         visit.setAppointmentId(appt.getId());
-        visit.setPatientId(userId);
-        visit.setDoctorId(doctorId);
+        visit.setPatientId(appt.getPatientId());
+        visit.setDoctorId(appt.getDoctorId());
         visit.setDepartment(appt.getDepartment());
         visit.setStatus("WAITING");
-        // 进度节点初始包含"挂号"节点，后续医生叫号/接诊/完成时由 VisitService.updateStatus 追加
-        String nowFmt = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String nowFmt = LocalDateTime.now().format(NODE_TIME_FMT);
         visit.setProgressNodes("[{\"name\":\"挂号\",\"time\":\"" + nowFmt + "\"}]");
         visit.setCreatedAt(LocalDateTime.now());
         visit.setUpdatedAt(LocalDateTime.now());
         visitMapper.insert(visit);
-
-        log.info("挂号创建成功: appointmentId={}, patientId={}, doctorId={}, time={}",
-                appt.getId(), userId, doctorId, appointmentTime);
-        return appt;
     }
 
     /**
@@ -264,9 +357,77 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     /**
-     * 取消挂号：仅患者本人可操作；已取消/已完成的单据不允许取消
+     * 患者自助改约：同医生换时段，原子完成"退旧号 → 扣新号 → 建新单"。
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Appointment rescheduleAppointment(Long id, Long userId, Role role, Long toSlotId) {
+        if (role != Role.PATIENT) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        if (id == null || toSlotId == null) {
+            throw new BizException(ErrorCode.PARAM_ERROR);
+        }
+        Appointment old = appointmentMapper.selectById(id);
+        if (old == null) {
+            throw new BizException(ErrorCode.NOT_FOUND);
+        }
+        if (!old.getPatientId().equals(userId)) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        if (!"PENDING".equals(old.getStatus()) && !"CONFIRMED".equals(old.getStatus())) {
+            throw new BizException("当前挂号状态不支持改约");
+        }
+        if (old.getSlotStart() != null && !old.getSlotStart().isAfter(LocalDateTime.now())) {
+            throw new BizException("就诊时间已开始，无法改约");
+        }
+        if (toSlotId.equals(old.getScheduleId())) {
+            throw new BizException("目标时段与当前时段相同，请选择其他时段");
+        }
+        ScheduleSlot target = scheduleSlotMapper.selectById(toSlotId);
+        if (target == null) {
+            throw new BizException(ErrorCode.NOT_FOUND.getCode(), "目标时段不存在");
+        }
+        if (!target.getDoctorId().equals(old.getDoctorId())) {
+            throw new BizException("改约仅支持同一医生，更换医生请先取消再重新挂号");
+        }
+        if (!"OPEN".equals(target.getStatus())) {
+            throw new BizException("目标时段不可预约，请重新选择");
+        }
+        LocalDateTime start = LocalDateTime.of(target.getWorkDate(), target.getStartTime());
+        if (!start.isAfter(LocalDateTime.now().plusMinutes(ScheduleSlotVO.BOOK_LEAD_MINUTES))) {
+            throw new BizException("目标时段已停止预约，请选择其他时段");
+        }
+        Visit visit = visitMapper.selectOne(new LambdaQueryWrapper<Visit>()
+                .eq(Visit::getAppointmentId, id).last("LIMIT 1"));
+        if (visit != null && !"WAITING".equals(visit.getStatus())) {
+            throw new BizException("医生已叫号，无法改约");
+        }
+
+        // 先退旧号再下新单：同一患者同日同医生的重复挂号校验才不会误伤自己
+        if (appointmentMapper.cancelIfActive(id, "RESCHEDULE") == 0) {
+            throw new BizException("挂号单状态已变更，请刷新后重试");
+        }
+        if (old.getScheduleId() != null) {
+            scheduleSlotMapper.release(old.getScheduleId());
+        }
+        Appointment created = createAppointmentBySlot(userId, Role.PATIENT, toSlotId);
+        // 记录改约来源，形成"原单 → 新单"的可追溯链路
+        created.setRescheduledFrom(id);
+        appointmentMapper.updateById(created);
+        log.info("自助改约成功：oldId={}, newId={}, patientId={}, slotId={}",
+                id, created.getId(), userId, toSlotId);
+        return created;
+    }
+
+    /**
+     * 取消挂号：条件更新单据状态 + 回补号源（同一事务）。
+     *
+     * <p>先改单据再回补：单据状态是幂等闸门，只有把状态从 PENDING/CONFIRMED 改成 CANCELLED
+     * 成功的那一次才会执行回补，重复点击/并发取消不会把号源多减一次。</p>
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void cancelAppointment(Long id, Long userId, Role role) {
         Appointment appt = appointmentMapper.selectById(id);
         if (appt == null) {
@@ -281,15 +442,21 @@ public class AppointmentServiceImpl implements AppointmentService {
         if ("FINISHED".equals(appt.getStatus())) {
             throw new BizException("已完成的挂号不能取消");
         }
+        if (appt.getSlotStart() != null && !appt.getSlotStart().isAfter(LocalDateTime.now())) {
+            throw new BizException("该号就诊时间已开始，无法取消");
+        }
         // 业务规则：医生未叫号前患者可取消挂号；一旦医生已叫号（visit 进入 CALLING 及之后），不允许取消
         Visit visit = visitMapper.selectOne(
                 new LambdaQueryWrapper<Visit>().eq(Visit::getAppointmentId, id).last("LIMIT 1"));
         if (visit != null && !"WAITING".equals(visit.getStatus())) {
             throw new BizException("医生已叫号，无法取消挂号");
         }
-        appt.setStatus("CANCELLED");
-        appt.setUpdatedAt(LocalDateTime.now());
-        appointmentMapper.updateById(appt);
-        log.info("挂号取消成功: appointmentId={}, patientId={}", id, userId);
+        if (appointmentMapper.cancelIfActive(id, "CANCEL") == 0) {
+            throw new BizException("挂号单状态已变更，请刷新后重试");
+        }
+        if (appt.getScheduleId() != null) {
+            scheduleSlotMapper.release(appt.getScheduleId());
+        }
+        log.info("挂号取消成功: appointmentId={}, patientId={}, slotId={}", id, userId, appt.getScheduleId());
     }
 }

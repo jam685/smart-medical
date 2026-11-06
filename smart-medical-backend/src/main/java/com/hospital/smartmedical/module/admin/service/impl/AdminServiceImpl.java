@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.exception.BizException;
 import com.hospital.smartmedical.common.result.PageResult;
+import com.hospital.smartmedical.common.security.DemoMode;
 import com.hospital.smartmedical.common.security.JwtUtil;
 import com.hospital.smartmedical.module.admin.dto.AdminUserRequest;
 import com.hospital.smartmedical.module.ai.agent.config.AiModelConfigProvider;
@@ -16,6 +17,7 @@ import com.hospital.smartmedical.module.doctor.mapper.DoctorMapper;
 import com.hospital.smartmedical.module.patient.entity.Patient;
 import com.hospital.smartmedical.module.patient.mapper.PatientMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,13 +35,14 @@ public class AdminServiceImpl implements AdminService {
     private final AuditLogMapper auditLogMapper;
     private final ModelConfigMapper modelConfigMapper;
     private final DataQualityMapper dataQualityMapper;
+    private final com.hospital.smartmedical.module.admin.scheduler.DataQualityScheduler dataQualityScheduler;
     private final JwtUtil jwtUtil;
 
     /** 模型配置提供者：管理端修改配置后使其缓存失效，实现热更新 */
     private final AiModelConfigProvider modelConfigProvider;
 
-    /** 新增用户缺省密码 123456 */
-    private static final String DEMO_PASSWORD = "123456";
+    /** 演示模式（仅 demo profile 下存在）：存在时允许新建账号使用默认初始密码 */
+    private final ObjectProvider<DemoMode> demoModeProvider;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -368,7 +371,12 @@ public class AdminServiceImpl implements AdminService {
 
     private String encodePassword(String raw) {
         if (raw == null || raw.isBlank()) {
-            return passwordEncoder.encode(DEMO_PASSWORD);
+            // 默认密码只在 demo profile 下允许；生产环境必须由管理员显式设置初始密码
+            DemoMode demoMode = demoModeProvider.getIfAvailable();
+            if (demoMode == null) {
+                throw new BizException("请设置初始密码（生产环境不提供默认密码）");
+            }
+            return passwordEncoder.encode(demoMode.defaultPassword());
         }
         if (raw.length() < 6 || raw.length() > 64) {
             throw new BizException("密码长度需为 6-64 位");
@@ -690,6 +698,14 @@ public class AdminServiceImpl implements AdminService {
     public List<?> getDataQuality() {
         return dataQualityMapper.selectList(
                 new LambdaQueryWrapper<DataQuality>().orderByDesc(DataQuality::getId)
+        );
+    }
+
+    @Override
+    public DataQuality runDataQualityCheck() {
+        dataQualityScheduler.runQualityCheck();
+        return dataQualityMapper.selectOne(
+                new LambdaQueryWrapper<DataQuality>().orderByDesc(DataQuality::getId).last("LIMIT 1")
         );
     }
 }

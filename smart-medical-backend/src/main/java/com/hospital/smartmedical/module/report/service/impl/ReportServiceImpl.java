@@ -65,7 +65,7 @@ public class ReportServiceImpl implements ReportService {
         }
 
         // 真实保存图片到 uploads/reports/，返回可直接访问的 URL（含 context-path）
-        String imageUrl = fileStorageService.saveImage(file, "reports", "report");
+        String imageUrl = fileStorageService.saveImage(file, "reports");
 
         Report report = new Report();
         report.setImageUrl(imageUrl);

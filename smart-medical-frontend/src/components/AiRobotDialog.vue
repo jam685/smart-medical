@@ -364,6 +364,7 @@ onMounted(() => {
                     <div class="ai-row"><span class="ai-k">科室</span><span class="ai-v">{{ m.card.department }}</span></div>
                     <div class="ai-row"><span class="ai-k">单号</span><span class="ai-v">{{ m.card.appointmentNo }}</span></div>
                     <div class="ai-row"><span class="ai-k">时间</span><span class="ai-v">{{ m.card.appointmentTime }}</span></div>
+                    <div v-if="m.card.queueNo" class="ai-row"><span class="ai-k">序号</span><span class="ai-v">第 {{ m.card.queueNo }} 号</span></div>
                   </div>
                   <div class="ai-card-actions">
                     <el-button size="default" @click="go('/patient/appointments')">查看我的挂号</el-button>

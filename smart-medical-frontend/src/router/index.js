@@ -49,6 +49,7 @@ const doctorRoutes = {
     { path: 'online-consults', name: 'DoctorConsultList', component: () => import('@/views/doctor/ConsultList.vue') },
     { path: 'online-consults/:id', name: 'DoctorConsultHandle', component: () => import('@/views/doctor/ConsultHandle.vue') },
     { path: 'ai-analysis', name: 'DoctorAiAnalysis', component: () => import('@/views/doctor/AiAnalysis.vue') },
+    { path: 'schedule', name: 'DoctorSchedule', component: () => import('@/views/doctor/Schedule.vue') },
   ]
 }
 
@@ -68,6 +69,7 @@ const adminRoutes = {
     { path: 'prompt-templates', name: 'AdminPromptTemplate', component: () => import('@/views/admin/PromptTemplate.vue') },
     { path: 'model-configs', name: 'AdminModelConfig', component: () => import('@/views/admin/ModelConfig.vue') },
     { path: 'data-quality', name: 'AdminDataQuality', component: () => import('@/views/admin/DataQuality.vue') },
+    { path: 'schedules', name: 'AdminScheduleManage', component: () => import('@/views/admin/ScheduleManage.vue') },
     { path: 'sensitive-review', name: 'AdminSensitiveReview', component: () => import('@/views/admin/SensitiveReview.vue') },
     { path: 'online-consults', name: 'AdminConsultMonitor', component: () => import('@/views/admin/ConsultMonitor.vue') },
     { path: 'online-consults/:id', name: 'AdminConsultMonitorDetail', component: () => import('@/views/admin/ConsultMonitorDetail.vue') },

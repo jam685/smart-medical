@@ -34,6 +34,11 @@
         </div>
       </div>
 
+      <!-- 停诊退号提示 -->
+      <div v-if="appt.status === 'CANCELLED' && appt.cancelReason === 'SUSPEND'" class="suspend-notice">
+        该号因医生临时停诊已由系统自动退号，请重新选号或联系客服改约。
+      </div>
+
       <!-- 订单信息卡 -->
       <div class="info-card">
         <h3 class="card-title">挂号信息</h3>
@@ -54,9 +59,17 @@
             <span class="i-label">就诊时间</span>
             <span class="i-value">{{ formatTime(appt.appointmentTime) }}</span>
           </li>
+          <li v-if="appt.queueNo">
+            <span class="i-label">就诊序号</span>
+            <span class="i-value"><strong class="queue-no">第 {{ appt.queueNo }} 号</strong></span>
+          </li>
           <li>
             <span class="i-label">就诊地点</span>
             <span class="i-value">小林智疗互联网医院 · 门诊 {{ appt.department }}候诊区</span>
+          </li>
+          <li v-if="appt.rescheduledFrom">
+            <span class="i-label">改约来源</span>
+            <span class="i-value">由原挂号单改约而来（原单号 {{ appt.rescheduledFrom }}）</span>
           </li>
           <li>
             <span class="i-label">创建时间</span>
@@ -80,6 +93,9 @@
 
       <!-- 底部操作区（按状态显示不同按钮） -->
       <div class="action-bar" v-if="appt.status === 'PENDING' || appt.status === 'CONFIRMED'">
+        <el-button type="primary" plain size="large" @click="rescheduleVisible = true">
+          改约时间
+        </el-button>
         <el-button type="danger" size="large" :loading="cancelling" @click="handleCancel">
           取消挂号
         </el-button>
@@ -90,6 +106,9 @@
         </el-button>
       </div>
     </template>
+
+    <!-- 改约弹窗 -->
+    <RescheduleDialog v-model="rescheduleVisible" :appointment="appt" @success="loadDetail" />
 
     <!-- 空状态（接口无数据） -->
     <div v-if="!loading && !appt" class="empty-state">
@@ -118,6 +137,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, InfoFilled } from '@element-plus/icons-vue'
 import { fetchAppointmentDetail, cancelAppointment } from '@/api/appointment'
+import RescheduleDialog from '@/components/RescheduleDialog.vue'
 
 /** 路由实例（取 :id 参数）和路由器（跳转） */
 const route = useRoute()
@@ -127,6 +147,8 @@ const router = useRouter()
 const loading = ref(true)
 /** 取消按钮 loading（防重复提交） */
 const cancelling = ref(false)
+/** 改约弹窗 */
+const rescheduleVisible = ref(false)
 /** 挂号详情数据（接口返回的 AppointmentVO） */
 const appt = ref(null)
 
@@ -247,6 +269,8 @@ onMounted(loadDetail)
 .i-label { font-size: 14px; color: #8B95A7; flex-shrink: 0; width: 90px; }
 .i-value { font-size: 14px; color: #1A2332; text-align: right; font-weight: 500; }
 .i-value.mono { font-family: 'SF Mono', 'Consolas', monospace; letter-spacing: 0.5px; }
+.queue-no { color: #1E7AE6; }
+.suspend-notice { margin: 0 0 16px; padding: 10px 14px; border-radius: 8px; background: #FFF7ED; color: #B45309; font-size: 13px; border: 1px solid #FED7AA; }
 .title-tag {
   display: inline-block; padding: 1px 8px; border-radius: 4px;
   background: #E3F2FF; color: #1E7AE6; font-size: 12px; margin-left: 4px;

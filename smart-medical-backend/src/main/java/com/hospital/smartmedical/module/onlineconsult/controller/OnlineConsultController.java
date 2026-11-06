@@ -23,8 +23,11 @@ import java.util.Map;
 /**
  * 线上面诊模块控制器（/online-consults）。
  *
- * <p>鉴权与角色在 AuthInterceptor 中统一完成，本控制器负责读取当前用户并转发到服务层。
- * V2.3 移除 OC-05~08（AI 分析/回复草稿，已迁往 /ai/*）与 OC-13（补充材料记录）。</p>
+ * <p>鉴权分工：AuthInterceptor 只做登录态与「路径是否只对某类角色开放」的粗粒度校验；
+ * 本模块接口为患者与医生共用（发起问诊/发消息 vs 接诊回复），因此不设路径级角色限制，
+ * 由本层和 Service 层按资源归属做校验（例如 /my-doctors 仅患者、confirm-reply 需为问诊医生）。</p>
+ *
+ * <p>V2.3 移除 OC-05~08（AI 分析/回复草稿，已迁往 /ai/*）与 OC-13（补充材料记录）。</p>
  */
 @RestController
 @RequestMapping("/online-consults")
@@ -45,7 +48,7 @@ public class OnlineConsultController {
      */
     @PostMapping("/upload-image")
     public Result<Map<String, Object>> uploadImage(@RequestParam("file") MultipartFile file) {
-        String imageUrl = fileStorageService.saveImage(file, "chat", "msg");
+        String imageUrl = fileStorageService.saveImage(file, "chat");
         Map<String, Object> data = new HashMap<>();
         data.put("imageUrl", imageUrl);
         return Result.ok(data);
@@ -103,7 +106,8 @@ public class OnlineConsultController {
             throw new BizException(ErrorCode.FORBIDDEN);
         }
         OnlineConsultRecord consult = onlineConsultService.createConsult(
-                patientId, req.getDoctorId(), req.getDepartment(), req.getChiefComplaint());
+                patientId, req.getDoctorId(), req.getDepartment(),
+                req.getChiefComplaint(), req.getPreConsultSessionId());
         return Result.ok(consult);
     }
 
@@ -201,6 +205,8 @@ public class OnlineConsultController {
         private Long doctorId;
         private String department;
         private String chiefComplaint;
+        /** 可选：患者在 AI 预问诊助手走过的 sessionId（用于医生端精准回溯预问诊摘要） */
+        private String preConsultSessionId;
     }
 
     /** 发送消息请求体 */

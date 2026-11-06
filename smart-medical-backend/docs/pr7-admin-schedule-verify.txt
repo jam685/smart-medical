@@ -1,0 +1,42 @@
+PR-7 管理员排班与停诊影响面验收记录
+时间：2026-11-05 22:35—23:05
+范围：管理端排班页、停诊影响面预览、批量退号停诊
+
+一、交付内容
+1. 后端接口（均在 /admin/schedules 下，AuthInterceptor 限定 ADMIN）
+   - GET  /doctors?department=          医生列表（含未上线医生，排班不要求在线）
+   - GET  /board?doctorId&startDate&days 某医生排班（含每时段已约数）
+   - GET  /impact?slotIds=1,2,3         停诊影响面：受影响患者 + 同医生改约建议（最多 5 个）
+   - PUT  /status {slotIds,suspended,force}
+         force=false 且有人预约 → 拒绝并返回人数；
+         force=true → 为受影响患者退号（cancel_reason=SUSPEND）、号源置 SUSPENDED 且 booked_count=0
+   - PUT  /{id}/capacity                调整号数（不小于已约数）
+   - POST /generate                     批量生成（医生或整科室）
+2. 并发与一致性
+   - 停诊前 SELECT ... FOR UPDATE 锁号源行，避免"查影响面"和"置停诊"之间被并发下单挤进来；
+   - 退号用条件更新，重复执行不会二次退号；退号与号源归零同事务。
+3. 数据模型
+   - sm_appointment 增加 cancel_reason（CANCEL 患者取消 / SUSPEND 停诊退号）。
+4. 前端
+   - 新增 /admin/schedules 排班管理页：科室/医生筛选、周视图、批量生成、停诊/恢复、加号；
+   - 停诊弹窗展示：影响人数、患者清单（姓名/手机号/单号/时间/状态）、同医生改约建议、复制通知清单；
+   - 患者端挂号详情：停诊退号的单显示"因医生停诊自动退号"提示。
+
+二、验证
+1. mvn -o test：Tests run: 59, Failures: 0, Errors: 0 —— BUILD SUCCESS
+   新增 ScheduleImpactTest 5 个用例：影响面聚合、未确认拒绝停诊、确认后退号且号源归零、已开始时段拒绝、恢复出诊。
+2. HTTP 实测（李医生 2026-11-06 08:00 时段，已约 1 人）
+   - 影响面：affectedCount=1，患者李四，单号 GH20261105063，改约建议 5 条；
+   - force=false：400 "该批次已有 1 位患者预约，停诊将为他们退号，请先确认影响面"；
+   - force=true：changed=1, cancelled=1；号源 SUSPENDED 且 booked=0；
+     挂号单状态 CANCELLED，cancel_reason=SUSPEND（数据库已核对）；
+   - 恢复出诊：changed=1；重新挂号成功（queueNo=1）。
+   - 整日停诊影响面：12 个时段聚合，affected=1（张三 09:00），说明跨时段聚合正确。
+3. 浏览器实测（Edge headless）
+   - 管理端菜单出现「排班管理」；科室切到内分泌科后医生自动切到李医生；
+   - 明日 08:00 显示"已约 1/5"，停诊弹窗正确展示患者与改约建议；
+   - console 错误 0。
+
+三、遗留
+- 停诊通知目前只提供"复制通知清单"，未接短信/站内信通道；
+- 批量改约需要先选中目标时段（建议下一期做"一键改约到指定时段"）。

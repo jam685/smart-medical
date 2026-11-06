@@ -29,3 +29,10 @@ ai-secret.yml
 # 操作系统文件
 .DS_Store
 Thumbs.db
+
+# 本地工具产物（智能体工作目录、沙箱修复脚本、解包出的 Spring Boot 目录）
+.dsh-work/
+.acl-recovery/
+acl-recovery/
+BOOT-INF/
+%SystemDrive%/

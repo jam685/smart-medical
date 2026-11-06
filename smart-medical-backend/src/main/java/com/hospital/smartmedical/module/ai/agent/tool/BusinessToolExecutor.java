@@ -2,6 +2,7 @@ package com.hospital.smartmedical.module.ai.agent.tool;
 
 import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.exception.BizException;
+import com.hospital.smartmedical.module.ai.agent.enums.IntentKeywords;
 import com.hospital.smartmedical.module.ai.agent.rag.DoctorRagService;
 import com.hospital.smartmedical.module.ai.agent.state.ChatMessage;
 import com.hospital.smartmedical.module.ai.agent.state.MedicalGraphState;
@@ -14,6 +15,8 @@ import com.hospital.smartmedical.module.patient.entity.Patient;
 import com.hospital.smartmedical.module.patient.mapper.PatientMapper;
 import com.hospital.smartmedical.module.prescription.service.PrescriptionService;
 import com.hospital.smartmedical.module.report.service.ReportService;
+import com.hospital.smartmedical.module.schedule.entity.ScheduleSlot;
+import com.hospital.smartmedical.module.schedule.service.ScheduleService;
 import com.hospital.smartmedical.module.visit.service.VisitService;
 import com.hospital.smartmedical.module.visit.vo.VisitVO;
 import lombok.RequiredArgsConstructor;
@@ -60,9 +63,14 @@ public class BusinessToolExecutor {
     private final PatientMapper patientMapper;
     /** 医生科室知识库 RAG 推荐服务（患者未指定科室/医生时按症状推荐医生） */
     private final DoctorRagService doctorRagService;
+    /** 号源服务：把"明天上午9点"这类模糊时间解析成真正可约的号源 */
+    private final ScheduleService scheduleService;
 
     /** 时间格式化（业务展示用） */
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+    /** 时段起止时间格式化（08:30） */
+    private static final DateTimeFormatter HM_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
     /** 就诊进度卡片单次最多展示条数（未指定科室时的"最近 N 条"上限，筛选条件由意图实体驱动） */
     private static final int PROGRESS_MAX = 3;
@@ -153,23 +161,25 @@ public class BusinessToolExecutor {
         boolean doctor = g.getRole() == com.hospital.smartmedical.module.ai.agent.enums.UserRole.DOCTOR;
         if (doctor) {
             // 就诊进度查询优先（"查患者就诊进度"同时命中两类关键词时按进度处理）
-            if (containsAny(text, "就诊进度", "进度", "就诊记录", "接诊记录", "就诊情况")) {
+            if (containsAny(text, IntentKeywords.DOCTOR_PROGRESS)) {
                 return "DOCTOR_PROGRESS";
             }
-            if (containsAny(text, "接诊患者", "我的患者", "待就诊", "叫号", "查患者")) {
+            if (containsAny(text, IntentKeywords.DOCTOR_PATIENTS)) {
                 return "DOCTOR_PATIENTS";
             }
             return "UNKNOWN";
         }
-        // 科室推荐类问题（该挂什么科/挂哪个科/推荐挂哪个科）不算挂号意图，交由预问诊 LLM 推荐科室
-        if (containsAny(text, "什么科", "哪个科", "哪科", "推荐挂", "应该挂", "挂什么", "挂哪个")) {
+        // 科室推荐类问题不算挂号意图，交由预问诊 LLM 推荐科室
+        if (containsAny(text, IntentKeywords.APPOINT_EXCLUDED)) {
             return "UNKNOWN";
         }
-        if (containsAny(text, "挂号", "预约", "挂一个", "挂个", "挂", "的号", "号吗")) {
+        // 挂号意图（APPOINT）：负向词闸门前置拦截，彻底堵死"挂念/挂科/挂电话"误匹配
+        boolean negative = containsAny(text, IntentKeywords.APPOINT_NEGATIVE);
+        if (!negative && containsAny(text, IntentKeywords.APPOINT_POSITIVE)) {
             return "APPOINT";
         }
-        // 挂号确认环节：患者回复时间且最近 AI 在引导确认挂号时间 → 继续挂号流程
-        if (containsAny(text, "明天", "今天", "后天", "上午", "下午", "晚上", "中午", "点")
+        // 挂号确认环节：患者只回复时间（如"明天上午9点"）且 AI 上轮在引导确认
+        if (containsAny(text, IntentKeywords.APPOINT_TIME_WORDS)
                 && lastAiAsksAppointTime(g)) {
             return "APPOINT";
         }
@@ -177,10 +187,10 @@ public class BusinessToolExecutor {
         if (!g.isAssistantSession()) {
             return "UNKNOWN";
         }
-        if (containsAny(text, "进度", "到哪", "排到", "就诊状态", "号到")) {
+        if (containsAny(text, IntentKeywords.PROGRESS)) {
             return "PROGRESS";
         }
-        if (containsAny(text, "报告", "处方", "药方", "检查结果", "检验")) {
+        if (containsAny(text, IntentKeywords.REPORT_PRESCRIPTION)) {
             return "PRESCRIPTION_REPORT";
         }
         return "UNKNOWN";
@@ -248,6 +258,11 @@ public class BusinessToolExecutor {
      */
     private Map<String, Object> doAppoint(MedicalGraphState g) {
         String text = g.getLastUserText();
+        // 0) 上一轮给出了"最近可约"建议：本轮确认则按候选号源下单，拒绝则取消，说别的则放弃建议继续解析
+        Map<String, Object> confirmation = handlePendingConfirmation(g, text);
+        if (confirmation != null) {
+            return confirmation;
+        }
         String dept = matchDept(text);
         String doctorName = matchDoctorName(text);
         LocalDateTime appointTime = extractTime(text);
@@ -407,9 +422,12 @@ public class BusinessToolExecutor {
      * @return null=校验通过；否则返回引导话术（不落库）
      */
     private String validateAppointment(MedicalGraphState g, Doctor doctor, LocalDateTime time) {
-        // 1) 时间校验：必须晚于当前时间
-        if (time == null || time.isBefore(LocalDateTime.now())) {
-            return "很抱歉，就诊时间需要晚于当前时间，请重新告诉我一个合适的时间（例：明天上午9点）。";
+        // 1) 时间校验：只拦"过去的日期"；同一天内已过的时段由号源解析自动顺延到最近可约时段
+        if (time == null) {
+            return "请告诉我希望就诊的时间（例：明天上午9点），我按号源为您安排。";
+        }
+        if (time.toLocalDate().isBefore(LocalDate.now())) {
+            return "很抱歉，这个日期已经过去了，请告诉我一个未来的就诊时间（例：明天上午9点）。";
         }
         // 2) 患者身份校验：图状态中的 patientId 不可信，回库核实患者档案
         if (g.getPatientId() == null) {
@@ -449,34 +467,138 @@ public class BusinessToolExecutor {
         if (invalid != null) {
             return appointReply(invalid);
         }
-        Appointment app = appointmentService.createAppointment(g.getPatientId(), Role.PATIENT,
-                doctor.getId(), doctor.getDepartment(), time);
+        // 把"明天上午9点"解析成真正可约的号源：同日优先、不早于期望时间；当日无号则顺延最近日期
+        ScheduleSlot slot = scheduleService.resolveForAi(doctor.getId(), time);
+        if (slot == null) {
+            return appointReply("很抱歉，「" + doctor.getRealName() + "」医生近 7 天暂无可预约号源，"
+                    + "建议您选择其他医生，或稍后再试。");
+        }
+        LocalDateTime slotStart = LocalDateTime.of(slot.getWorkDate(), slot.getStartTime());
+        // "改期"判定：日期不同、或时段晚于期望时间（同一号源起点不算改期）都视为改期
+        boolean moved = time == null
+                || !slotStart.toLocalDate().equals(time.toLocalDate())
+                || slotStart.toLocalTime().isAfter(time.toLocalTime());
+        if (moved) {
+            // 关键：期望时段已满时不再"先斩后奏"——只给建议、把候选号源写进状态，等患者确认再下单
+            g.setPendingSlotId(slot.getId());
+            Map<String, Object> r = appointReply("您期望的"
+                    + (time == null ? "时间暂未明确" : TIME_FMT.format(time))
+                    + "暂无可约号源。最近可约：【" + doctor.getDepartment() + " " + doctor.getRealName()
+                    + "】" + TIME_FMT.format(slotStart) + "-" + slot.getEndTime().format(HM_FMT)
+                    + "，可以吗？回复「可以」我就为您挂号。");
+            r.put("pendingDoctor", doctor.getRealName());
+            r.put("pendingSlotId", slot.getId());
+            return r;
+        }
+        return bookSlot(g, doctor, slot, false);
+    }
+
+    /**
+     * 真正落库挂号并组装成功回复（唯一的下单入口，直接挂号轮与确认轮共用）。
+     *
+     * @param g         图状态
+     * @param doctor    医生
+     * @param slot      已确定的号源
+     * @param confirmed 是否为"患者确认建议"后下单
+     * @return 挂号成功结构化结果（含卡片）
+     */
+    private Map<String, Object> bookSlot(MedicalGraphState g, Doctor doctor, ScheduleSlot slot, boolean confirmed) {
+        LocalDateTime slotStart = LocalDateTime.of(slot.getWorkDate(), slot.getStartTime());
+        Appointment app;
+        try {
+            app = appointmentService.createAppointmentBySlot(g.getPatientId(), Role.PATIENT, slot.getId());
+        } catch (BizException e) {
+            // 号源被抢空/重复挂号等业务拦截：转成引导话术，不落库
+            return appointReply("很抱歉，" + e.getMessage() + "。您可以换个时段，或告诉我「换个医生」，我再帮您找。");
+        }
+        g.setPendingSlotId(null);
+        String slotText = TIME_FMT.format(slotStart) + "-" + slot.getEndTime().format(HM_FMT);
+        String head = confirmed ? "好的，已按您确认的时间为您挂好" : "已为您成功挂好";
+        String reply = head + "【" + doctor.getDepartment() + " " + doctor.getRealName()
+                + "】医生的号，就诊时间 " + slotText
+                + "，就诊序号 " + app.getQueueNo() + " 号，请提前 15 分钟到院签到。"
+                + "（挂号单号 " + app.getId() + "，可在「我的挂号」中查看与取消）";
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("action", "APPOINT");
         r.put("appointmentId", app.getId());
-        r.put("reply", "已为您成功挂好【" + doctor.getDepartment() + " " + doctor.getRealName() + "】医生的号，"
-                + "就诊时间 " + TIME_FMT.format(time) + "，请按时到院。"
-                + "（挂号单号 " + app.getId() + "，可在「我的挂号」中查看与取消）");
+        r.put("slotId", slot.getId());
+        r.put("queueNo", app.getQueueNo());
+        r.put("reply", reply);
         // 挂号信息小卡片结构化数据（前端按字段渲染，不依赖润色后的文案，避免事实被改写）
-        r.put("card", buildAppointmentCard(doctor, app, time));
+        r.put("card", buildAppointmentCard(doctor, app));
         return r;
+    }
+
+    /**
+     * 处理"上一轮给出的最近可约建议"。
+     *
+     * <p>三种结果：同意 → 按候选号源下单；拒绝 → 取消建议；说别的内容 → 清空建议，继续正常解析。</p>
+     *
+     * @param g    图状态（含 pendingSlotId）
+     * @param text 用户本轮消息
+     * @return 处理结果；未触发确认逻辑返回 null
+     */
+    private Map<String, Object> handlePendingConfirmation(MedicalGraphState g, String text) {
+        Long pendingSlotId = g.getPendingSlotId();
+        // 双重保险：必须有待确认号源，且最近一条 AI 回复确实在征求确认（防止陈旧建议被"可以"误触发）
+        if (pendingSlotId == null || !lastAiAskedConfirm(g)) {
+            return null;
+        }
+        if (containsAny(text, IntentKeywords.APPOINT_DENY)) {
+            g.setPendingSlotId(null);
+            return appointReply("好的，已取消这次安排。您可以告诉我其他时间或科室，我再帮您找。");
+        }
+        if (!containsAny(text, IntentKeywords.APPOINT_CONFIRM)) {
+            // 患者说了新时间/新科室：放弃旧建议，继续走正常解析
+            g.setPendingSlotId(null);
+            return null;
+        }
+        ScheduleSlot slot = scheduleService.getById(pendingSlotId);
+        if (slot == null || !"OPEN".equals(slot.getStatus())) {
+            g.setPendingSlotId(null);
+            return appointReply("抱歉，刚才建议的时段已不可预约，请重新告诉我时间或科室。");
+        }
+        Doctor doctor = doctorMapper.selectById(slot.getDoctorId());
+        if (doctor == null) {
+            g.setPendingSlotId(null);
+            return appointReply("抱歉，医生信息异常，请重新选择。");
+        }
+        return bookSlot(g, doctor, slot, true);
+    }
+
+    /**
+     * 最近一条 AI 回复是否在征求挂号确认。
+     */
+    private boolean lastAiAskedConfirm(MedicalGraphState g) {
+        List<ChatMessage> history = g.getChatHistory();
+        if (history == null || history.isEmpty()) {
+            return false;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessage msg = history.get(i);
+            if ("AI".equals(msg.getSender()) && msg.getContent() != null) {
+                return msg.getContent().contains("可以吗") || msg.getContent().contains("回复「可以」");
+            }
+        }
+        return false;
     }
 
     /**
      * 组装挂号信息卡片的展示数据（医生姓名/科室/挂号单号/预约时间，全部取自数据库真实值）。
      *
      * @param doctor 已挂号医生
-     * @param app    挂号记录（单号取记录 ID）
-     * @param time   预约就诊时间
+     * @param app    挂号记录（单号取记录 ID，时间/序号取号源扣减后的真实值）
      * @return 卡片数据 Map（type=APPOINTMENT，前端据此选择卡片样式）
      */
-    private Map<String, Object> buildAppointmentCard(Doctor doctor, Appointment app, LocalDateTime time) {
+    private Map<String, Object> buildAppointmentCard(Doctor doctor, Appointment app) {
         Map<String, Object> card = new LinkedHashMap<>();
         card.put("type", "APPOINTMENT");
         card.put("doctorName", doctor.getRealName());
         card.put("department", doctor.getDepartment());
         card.put("appointmentNo", app.getId());
-        card.put("appointmentTime", TIME_FMT.format(time));
+        card.put("appointmentTime", app.getAppointmentTime() == null ? null : TIME_FMT.format(app.getAppointmentTime()));
+        card.put("queueNo", app.getQueueNo());
+        card.put("slotId", app.getScheduleId());
         return card;
     }
 
@@ -500,37 +622,14 @@ public class BusinessToolExecutor {
     }
 
     /**
-     * 从文本解析就诊时间（日期词：今天/明天/后天 + 时间点：X点/X点半，支持上午/下午/晚上）。
+     * 从文本解析就诊时间（日期词 + 时段 + 中文/阿拉伯数字 + 半/一刻/三刻/冒号格式）。
      * 无法解析出明确时间时返回 null（用于引导患者补充时间）。
      *
      * @param text 用户消息
      * @return 解析出的就诊时间，或 null
      */
     private LocalDateTime extractTime(String text) {
-        if (text == null || text.isBlank()) {
-            return null;
-        }
-        LocalDate base = LocalDate.now();
-        if (text.contains("后天")) {
-            base = base.plusDays(2);
-        } else if (text.contains("明天")) {
-            base = base.plusDays(1);
-        }
-        java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("(上午|下午|晚上|中午)?\\s*(\\d{1,2})[点时](半|30)?")
-                .matcher(text);
-        if (m.find()) {
-            String meridiem = m.group(1);
-            int hour = Integer.parseInt(m.group(2));
-            int minute = ("半".equals(m.group(3)) || "30".equals(m.group(3))) ? 30 : 0;
-            if (meridiem != null && (meridiem.contains("下午") || meridiem.contains("晚上")) && hour < 12) {
-                hour += 12;
-            } else if (meridiem != null && meridiem.contains("中午")) {
-                hour = 12;
-            }
-            return base.atTime(hour, minute);
-        }
-        return null;
+        return TimeTextParser.parse(text);
     }
 
     /**

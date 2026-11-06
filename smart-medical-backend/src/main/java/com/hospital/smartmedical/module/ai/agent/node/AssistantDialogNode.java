@@ -1,8 +1,10 @@
 package com.hospital.smartmedical.module.ai.agent.node;
 
+import com.hospital.smartmedical.module.ai.agent.enums.ReplySource;
 import com.hospital.smartmedical.module.ai.agent.enums.UserRole;
 import com.hospital.smartmedical.module.ai.agent.llm.LlmClientService;
 import com.hospital.smartmedical.module.ai.agent.llm.PromptTemplateLoader;
+import com.hospital.smartmedical.module.ai.agent.rag.FaqRagService;
 import com.hospital.smartmedical.module.ai.agent.state.ChatMessage;
 import com.hospital.smartmedical.module.ai.agent.state.MedicalGraphState;
 import com.hospital.smartmedical.module.ai.agent.stream.StreamTokenRegistry;
@@ -33,6 +35,8 @@ public class AssistantDialogNode implements NodeAction<AgentState> {
 
     private final LlmClientService llmClientService;
     private final PromptTemplateLoader promptTemplateLoader;
+    /** FAQ 知识库（流程/材料/费用类问题的回答依据） */
+    private final FaqRagService faqRagService;
 
     /** 时间格式化 */
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -85,6 +89,12 @@ public class AssistantDialogNode implements NodeAction<AgentState> {
                             "history", buildHistory(g.getChatHistory(), doctor),
                             "userInput", lastText,
                             "greeting", greeting));
+            // FAQ 知识库：流程/材料/费用/时间类问题优先用知识库内容作答（仅患者端；医生端不注入）
+            String faqContext = doctor ? "" : faqRagService.buildContext(lastText, 3);
+            if (!system.isBlank() && !faqContext.isBlank()) {
+                system = system + "\n\n【本院流程与须知（来自知识库，回答流程/材料/费用/时间类问题时优先使用；"
+                        + "与常识冲突时以本段为准；不要编造本段未提供的信息）】\n" + faqContext;
+            }
             String reply;
             if (system.isBlank()) {
                 // 模板缺失（管理员端尚未配置）：不做 LLM 调用，直接返回兜底引导，避免空系统提示词乱答
@@ -100,6 +110,8 @@ public class AssistantDialogNode implements NodeAction<AgentState> {
             }
             g.setReply(reply);
             g.setReplyDraft(reply);
+            // 标记来源：只有客服对话节点的通用问答才允许进入语义缓存
+            g.setReplySource(ReplySource.ASSISTANT_DIALOG);
             // 客服会话不产生预问诊草稿，不落草稿表
             g.setHasNewDraft(false);
             g.getChatHistory().add(new ChatMessage("AI", "TEXT", reply, null, LocalDateTime.now().format(TIME_FMT)));

@@ -2,30 +2,30 @@
 -- 智能医疗系统 种子数据（数据库设计 V1.3 · 21 张表）
 -- =============================================
 
--- 患者 (密码均为 123456, BCrypt hash)
+-- 患者 (密码均为 SmartMed@2026, BCrypt hash；演示环境可用 --spring.profiles.active=demo 走万能口令 123456)
 INSERT INTO sm_patient (username, password, real_name, gender, phone, id_card, avatar, status) VALUES
-('zhangsan', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '张三', '男', '13800138001', '110101199001011234', NULL, 'ACTIVE'),
-('lisi',     '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '李四', '女', '13800138002', '110101199202022345', NULL, 'ACTIVE'),
-('wangwu',   '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '王五', '男', '13800138003', '110101198803033456', NULL, 'ACTIVE');
+('zhangsan', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '张三', '男', '13800138001', '110101199001011234', NULL, 'ACTIVE'),
+('lisi',     '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '李四', '女', '13800138002', '110101199202022345', NULL, 'ACTIVE'),
+('wangwu',   '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '王五', '男', '13800138003', '110101198803033456', NULL, 'ACTIVE');
 
 -- 医生（密码均为 123456, BCrypt hash；覆盖多个科室便于挂号/问诊）
 INSERT INTO sm_doctor (employee_no, password, real_name, gender, title, phone, department, avatar, bio, online_status, status) VALUES
-('D001', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '李医生', '女', '主任医师',   '13900139001', '内分泌科', NULL, '从事内分泌临床工作 20 年，擅长糖尿病、甲状腺疾病、骨质疏松的诊治。', 'ONLINE',  'ACTIVE'),
-('D002', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '王医生', '男', '副主任医师', '13900139002', '心内科',   NULL, '擅长冠心病、高血压、心律失常的综合治疗。',                                'ONLINE',  'ACTIVE'),
-('D003', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '张医生', '男', '主治医师',   '13900139003', '呼吸科',   NULL, '擅长慢性咳嗽、哮喘、慢阻肺的诊治。',                                      'ONLINE',  'ACTIVE'),
-('D004', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '陈医生', '女', '主任医师',   '13900139004', '儿科',     NULL, '擅长儿童呼吸系统疾病、生长发育评估、新生儿保健。',                         'ONLINE',  'ACTIVE'),
-('D005', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '赵医生', '男', '副主任医师', '13900139005', '儿科',     NULL, '擅长儿童消化系统疾病、过敏性疾病及儿童保健。',                             'ONLINE',  'ACTIVE'),
-('D006', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '刘医生', '女', '主任医师',   '13900139006', '妇科',     NULL, '擅长妇科肿瘤、盆底疾病、生殖内分泌及更年期综合征诊治。',                    'ONLINE',  'ACTIVE'),
-('D007', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '孙医生', '女', '主治医师',   '13900139007', '妇科',     NULL, '擅长妇科炎症、月经失调、孕前检查及孕期保健。',                             'ONLINE',  'ACTIVE'),
-('D008', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '周医生', '男', '主任医师',   '13900139008', '外科',     NULL, '擅长胃肠外科、肝胆外科及腹腔镜微创手术。',                                 'ONLINE',  'ACTIVE'),
-('D009', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '吴医生', '男', '副主任医师', '13900139009', '外科',     NULL, '擅长甲状腺、乳腺疾病及疝外科，微创手术经验丰富。',                         'ONLINE',  'ACTIVE'),
-('D010', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '郑医生', '男', '主任医师',   '13900139010', '神经外科', NULL, '擅长脑肿瘤、脑血管病及颅脑外伤的手术治疗。',                               'ONLINE',  'ACTIVE'),
-('D011', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '钱医生', '男', '副主任医师', '13900139011', '神经外科', NULL, '擅长功能神经外科及脊柱脊髓疾病的微创治疗。',                               'ONLINE',  'ACTIVE'),
-('D012', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '冯医生', '男', '主任医师',   '13900139012', '骨科',     NULL, '擅长关节置换、脊柱外科及运动损伤。',                                       'ONLINE',  'ACTIVE'),
-('D013', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '蒋医生', '女', '副主任医师', '13900139013', '皮肤科',   NULL, '擅长痤疮、湿疹、荨麻疹及皮肤美容激光治疗。',                               'ONLINE',  'ACTIVE'),
-('D014', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '沈医生', '男', '主任医师',   '13900139014', '眼科',     NULL, '擅长白内障超声乳化、青光眼手术及近视激光矫正。',                           'ONLINE',  'ACTIVE'),
-('D015', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '韩医生', '男', '主任医师',   '13900139015', '急诊科',   NULL, '擅长急危重症抢救、多发伤救治及中毒处理。',                                 'ONLINE',  'ACTIVE'),
-('D016', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '杨医生', '女', '副主任医师', '13900139016', '中医科',   NULL, '擅长中医内科调理、针灸推拿、慢性病康复及亚健康调理。',                     'ONLINE',  'ACTIVE');
+('D001', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '李医生', '女', '主任医师',   '13900139001', '内分泌科', NULL, '从事内分泌临床工作 20 年，擅长糖尿病、甲状腺疾病、骨质疏松的诊治。', 'ONLINE',  'ACTIVE'),
+('D002', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '王医生', '男', '副主任医师', '13900139002', '心内科',   NULL, '擅长冠心病、高血压、心律失常的综合治疗。',                                'ONLINE',  'ACTIVE'),
+('D003', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '张医生', '男', '主治医师',   '13900139003', '呼吸科',   NULL, '擅长慢性咳嗽、哮喘、慢阻肺的诊治。',                                      'ONLINE',  'ACTIVE'),
+('D004', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '陈医生', '女', '主任医师',   '13900139004', '儿科',     NULL, '擅长儿童呼吸系统疾病、生长发育评估、新生儿保健。',                         'ONLINE',  'ACTIVE'),
+('D005', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '赵医生', '男', '副主任医师', '13900139005', '儿科',     NULL, '擅长儿童消化系统疾病、过敏性疾病及儿童保健。',                             'ONLINE',  'ACTIVE'),
+('D006', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '刘医生', '女', '主任医师',   '13900139006', '妇科',     NULL, '擅长妇科肿瘤、盆底疾病、生殖内分泌及更年期综合征诊治。',                    'ONLINE',  'ACTIVE'),
+('D007', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '孙医生', '女', '主治医师',   '13900139007', '妇科',     NULL, '擅长妇科炎症、月经失调、孕前检查及孕期保健。',                             'ONLINE',  'ACTIVE'),
+('D008', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '周医生', '男', '主任医师',   '13900139008', '外科',     NULL, '擅长胃肠外科、肝胆外科及腹腔镜微创手术。',                                 'ONLINE',  'ACTIVE'),
+('D009', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '吴医生', '男', '副主任医师', '13900139009', '外科',     NULL, '擅长甲状腺、乳腺疾病及疝外科，微创手术经验丰富。',                         'ONLINE',  'ACTIVE'),
+('D010', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '郑医生', '男', '主任医师',   '13900139010', '神经外科', NULL, '擅长脑肿瘤、脑血管病及颅脑外伤的手术治疗。',                               'ONLINE',  'ACTIVE'),
+('D011', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '钱医生', '男', '副主任医师', '13900139011', '神经外科', NULL, '擅长功能神经外科及脊柱脊髓疾病的微创治疗。',                               'ONLINE',  'ACTIVE'),
+('D012', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '冯医生', '男', '主任医师',   '13900139012', '骨科',     NULL, '擅长关节置换、脊柱外科及运动损伤。',                                       'ONLINE',  'ACTIVE'),
+('D013', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '蒋医生', '女', '副主任医师', '13900139013', '皮肤科',   NULL, '擅长痤疮、湿疹、荨麻疹及皮肤美容激光治疗。',                               'ONLINE',  'ACTIVE'),
+('D014', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '沈医生', '男', '主任医师',   '13900139014', '眼科',     NULL, '擅长白内障超声乳化、青光眼手术及近视激光矫正。',                           'ONLINE',  'ACTIVE'),
+('D015', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '韩医生', '男', '主任医师',   '13900139015', '急诊科',   NULL, '擅长急危重症抢救、多发伤救治及中毒处理。',                                 'ONLINE',  'ACTIVE'),
+('D016', '$2a$10$9ZJ7kiVkmxS4fFs6Bc1OZOLLeRnkJTqdLCfjKsXqgzxbmvap.Nxaq', '杨医生', '女', '副主任医师', '13900139016', '中医科',   NULL, '擅长中医内科调理、针灸推拿、慢性病康复及亚健康调理。',                     'ONLINE',  'ACTIVE');
 
 -- 管理员 (Demo简化登录)
 INSERT INTO sm_admin (employee_no, phone, id_card, real_name, status) VALUES

@@ -1,6 +1,7 @@
 package com.hospital.smartmedical.module.ai.agent.node;
 
 import com.hospital.smartmedical.module.ai.agent.enums.ConsultStage;
+import com.hospital.smartmedical.module.ai.agent.enums.ReplySource;
 import com.hospital.smartmedical.module.ai.agent.llm.LlmClientService;
 import com.hospital.smartmedical.module.ai.agent.llm.PromptTemplateLoader;
 import com.hospital.smartmedical.module.ai.agent.rag.DoctorRagService;
@@ -134,6 +135,8 @@ public class PatientDialogAgentNode implements NodeAction<AgentState> {
             }
             g.setReplyDraft(reply);
             g.setReply(reply);
+            // 标记来源：预问诊回复带症状上下文，不参与语义缓存
+            g.setReplySource(ReplySource.PATIENT_DIALOG);
             // 3) 本轮产生症状摘要草稿（saveDraftAuditNode 落库 + 审计）
             g.setHasNewDraft(true);
             g.setDraftType("SYMPTOM_SUMMARY");

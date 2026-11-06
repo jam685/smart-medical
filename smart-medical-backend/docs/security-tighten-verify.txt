@@ -1,0 +1,37 @@
+安全收口与两个一分钟项 —— 实测记录（2026-11-06）
+
+【① 验证码收口】
+默认 profile：
+  POST /patients/password-reset/code
+  → {"code":0,"message":"success","data":{"sent":true}}
+  （响应体不再包含 code；验证码只走服务端日志/后续短信通道）
+demo profile（--spring.profiles.active=demo）：
+  → {"code":0,"message":"success","data":{"code":"494210","sent":true}}
+
+【② 种子密码改强】
+新密码：SmartMed@2026（BCrypt）
+  默认 profile 登录 zhangsan/SmartMed@2026 → code=0
+  默认 profile 登录 zhangsan/123456        → code=400 用户名或密码错误
+  医生 D003/SmartMed@2026                  → code=0
+  data.sql 旧 hash 残留 = 0（19 处已替换）
+已更新范围：zhangsan / lisi / wangwu + 全部医生账号
+
+【⑦ 首轮不写缓存】
+清空语义缓存后，新会话两轮：
+  ROUND1「挂号流程是什么」 cached=False
+   日志：[语义缓存] 首轮不读不写缓存（sid=cs_2281a4f2c9aa）
+  ROUND2「医保怎么报销」   cached=False
+   日志：[语义缓存] 已沉淀问答：'医保怎么报销'（分类=FLOW，TTL=30天）
+结论：首轮不读不写；非首轮正常写入。
+
+【⑭ 号源自动播种默认关闭】
+  application.yml: app.schedule.auto-seed=false（默认）
+  ScheduleBootstrap: @Value("${app.schedule.auto-seed:false}")
+  新增 application-demo.yml：auto-seed=true + expose-verification-code=true
+  启动日志无「号源为空，自动生成」记录
+
+【⑮ 清理】
+  backend-restart.log 已删除
+
+【测试】
+  mvn test：86 个用例全绿

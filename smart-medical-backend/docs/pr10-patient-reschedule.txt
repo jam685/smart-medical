@@ -1,0 +1,38 @@
+PR-10 患者自助改约验收记录
+时间：2026-11-05 23:05—23:30
+范围：患者在不取消挂号的前提下，自行把预约换到同一医生的其他时段
+
+一、交付内容
+1. 接口：POST /appointments/{id}/reschedule  { toSlotId }
+   - 权限：仅本人；状态 PENDING/CONFIRMED；未开始；医生未叫号
+   - 目标：必须同一医生、OPEN、未过截单、不能是当前时段
+   - 事务：取消原单(RESCHEDULE) → 回补旧号 → 目标号源重新下单（复用 createAppointmentBySlot 的 CAS 扣号）
+     任一步失败整体回滚，不会出现"旧号退了、新号没挂上"
+2. 链路留痕：sm_appointment 新增 rescheduled_from，新单记录原单 ID；旧单 cancel_reason=RESCHEDULE
+3. 前端
+   - 新增 RescheduleDialog 组件：7 天日期条 + 上午/下午时段，当前时段标记"当前时段"且不可选，非可约时段置灰
+   - 挂载入口：挂号列表（每张待就诊单「改约」按钮）+ 挂号详情（「改约时间」按钮）
+   - 详情页展示"由原挂号单改约而来（原单号 N）"
+
+二、验证
+1. mvn -o test：Tests run: 69, Failures: 0, Errors: 0 —— BUILD SUCCESS
+   新增 AppointmentRescheduleTest 5 个用例：
+   - 改约成功并写入 rescheduled_from、回补旧号；
+   - 换医生被拒；
+   - 目标时段与当前相同被拒；
+   - 医生已叫号被拒；
+   - 非本人挂号单被拒。
+2. HTTP 实测（张三，王医生 11-06 09:30 → 14:00）
+   - 换医生：400 "改约仅支持同一医生，更换医生请先取消再重新挂号"；
+   - 改约：newId=73，rescheduledFrom=72，slotId=777，queueNo=1；
+   - 号源：09:30 booked 1→0，14:00 booked 0→1；
+   - 原单 72：CANCELLED / RESCHEDULE。
+3. 浏览器实测（Edge headless）
+   - 详情页「改约时间」打开弹窗，自动定位原日期；
+   - 当前时段显示"当前时段"禁用，已停诊/已过时段显示"不可约"；
+   - console 错误 0。
+
+三、遗留
+- 不支持换医生（涉及挂号费差异，走取消重挂）；
+- 未限制改约次数/时间窗口（如就诊前 2 小时内不可改），当前只校验"未开始"；
+- 改约不额外发站内信（患者自己操作，页面即时反馈）；如需医生侧知晓，可挂 SUSPEND_RESCHEDULE 事件。

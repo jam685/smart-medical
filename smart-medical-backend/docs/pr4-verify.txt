@@ -1,0 +1,37 @@
+PR-4 验收记录（测试与收尾）
+时间：2026-11-04 18:00—18:04
+
+一、测试结果（mvn test）
+Tests run: 30, Failures: 0, Errors: 0, Skipped: 0 —— BUILD SUCCESS
+
+| 测试类 | 用例数 | 覆盖内容 |
+|---|---|---|
+| SemanticCacheRulesTest | 8 | 分类边界（FLOW/COMMON/SENSITIVE/UNKNOWN）、归一化、闸门、采样、幂等 key 摘要 |
+| SemanticCacheFlowTest | 8 | 写入→命中、按类 TTL、敏感问题拒写、读取二次校验、答案过期、写失败回滚、幂等锁去重、孤儿清理 |
+| AuthInterceptorRoleTest | 8 | 角色 × 路径矩阵（含 /online-consults 共用、根路径精确匹配、管理端隔离） |
+| DataQualitySchedulerTest（原有） | 6 | 未改动 |
+
+二、测试逼出的两个问题（真实收获）
+1) 答案长度闸门：测试答案只有 59 字，未达到 cacheableAnswer 的 60 字下限，导致 5 个用例失败。
+   → 说明「质量闸门」确实在生效，不是摆设；已把测试答案加长到 100+ 字。
+2) Mockito 变长参数强转：add/remove 的 varargs stub 触发 String → Object[] 的 ClassCastException。
+   → 改为动态代理手写假 Redis，测试不再依赖 Mockito 的参数匹配细节。
+
+三、为可测性做的两处重构
+1) SemanticCacheService.writeAfterReply：异步 → 同步（回滚/幂等/TTL 逻辑可确定性断言），
+   非阻塞由调用方 AiAgentService 用 CompletableFuture 包装，线上行为不变。
+2) 规则方法开放包内可见（classify / normalize / eligible / sampled / sha256），供同包测试直接调用。
+
+四、重启后冒烟（重新打包并启动，PID 134812）
+| 场景 | 结果 |
+|---|---|
+| A1 重启后访问已有缓存（挂号流程是什么） | cached=true，741 ms，score=1.0（读取路径未被重构破坏） |
+| B1 新问题（医保怎么报销）首次 | cached=false，3167 ms（真实 LLM） |
+| B2 同一问题再次 | cached=true，29 ms，score=1.0（同步写 + 调用方异步包装生效） |
+
+统计：total=3，hit=2，returned=2，writtenFlow=1，writeFailures=0，dedupSkipped=0，queryVectorCacheSize=2。
+
+五、结论
+- 语义缓存 P2 功能闭环：分类白名单 + 按类 TTL + 读取二次校验 + 幂等写入 + 失败回滚 + 孤儿清理；
+- 关键路径有测试兜底（24 个新用例），权限矩阵回归被钉死；
+- 遗留事项见交付说明。

@@ -96,15 +96,21 @@ public class AiServiceImpl implements AiService {
         return res;
     }
 
-    // ===================== 4. 图片/报告分析（Demo, 无报表解读表） =====================
+    // ===================== 4. 图片/报告分析（Demo, 带归属校验） =====================
 
     @Override
-    public Map<String, Object> imageAnalysis(Long reportId) {
+    public Map<String, Object> imageAnalysis(Long reportId, Long userId, com.hospital.smartmedical.common.enums.Role role) {
         Report report = reportMapper.selectById(reportId);
-        Map<String, Object> res = new LinkedHashMap<>();
         if (report == null) {
             throw new BizException(ErrorCode.NOT_FOUND);
         }
+        // 归属校验：患者只能看自己的报告；医生/管理员放行
+        if (role == com.hospital.smartmedical.common.enums.Role.PATIENT
+                && report.getPatientId() != null
+                && !userId.equals(report.getPatientId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "无权查看他人报告");
+        }
+        Map<String, Object> res = new LinkedHashMap<>();
         res.put("reportId", reportId);
         res.put("reportTitle", report.getReportType() != null ? report.getReportType() : "未命名报告");
         res.put("analysis", "（Demo）已读取报告，正式 AI 图片理解将在接真实大模型后提供。");

@@ -1,5 +1,7 @@
 package com.hospital.smartmedical.module.ai.service;
 
+import com.hospital.smartmedical.common.enums.Role;
+
 import java.util.Map;
 
 /**
@@ -37,6 +39,17 @@ public interface AiService {
      * 图片/报告分析：根据报告 id 读取报告信息，返回 AI 分析结果（Demo 返回通用占位）。
      * 返回结构：reportId / reportTitle / recognizedContent / analysis /
      * abnormalItems / referenceRanges / confidence / needHuman / disclaimer
+     *
+     * <p>归属校验说明：
+     * <ul>
+     *   <li>DOCTOR / ADMIN 角色：直接放行（医生可查看任意患者报告做诊疗参考）</li>
+     *   <li>PATIENT 角色：report.patient_id 必须等于当前 userId，否则抛 FORBIDDEN</li>
+     * </ul>
+     * </p>
+     *
+     * @param reportId 报告 ID（sm_report.id）
+     * @param userId   当前登录用户 ID
+     * @param role     当前登录角色
      */
-    Map<String, Object> imageAnalysis(Long reportId);
+    Map<String, Object> imageAnalysis(Long reportId, Long userId, Role role);
 }

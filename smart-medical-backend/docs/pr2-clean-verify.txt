@@ -1,0 +1,9 @@
+REDIS_HELPER:
+  KEYS_BEFORE: 2
+  VICTIM: sm:semcache:ans:c09c5f33-a520-4f97-b455-6f067bf9d641
+  DEL_RESULT: 1
+  SET_SIZE_AFTER_DEL: 2
+  LOCK_KEYS: 1
+STATS_BEFORE={"enabled":true,"shadow":false,"mode":"hit-returnï¼å½ä¸­è¿åï¼","sampleRate":100,"threshold":0.92,"ttlDays":7,"collection":"sm_semantic_cache","storeReady":true,"total":0,"hit":0,"hitRate":0.0,"returned":0,"returnedRate":0.0,"savedChars":0,"estimatedSavedTokens":0,"expiredHits":0,"writeFailures":0,"dedupSkipped":0,"orphansCleaned":0,"queryVectorCacheSize":0,"queryVectorHits":0,"queryVectorMisses":0,"written":0,"skipped":0}
+CLEAN_RESULT={"cleaned":1}
+STATS_AFTER={"enabled":true,"shadow":false,"mode":"hit-returnï¼å½ä¸­è¿åï¼","sampleRate":100,"threshold":0.92,"ttlDays":7,"collection":"sm_semantic_cache","storeReady":true,"total":0,"hit":0,"hitRate":0.0,"returned":0,"returnedRate":0.0,"savedChars":0,"estimatedSavedTokens":0,"expiredHits":0,"writeFailures":0,"dedupSkipped":0,"orphansCleaned":1,"queryVectorCacheSize":0,"queryVectorHits":0,"queryVectorMisses":0,"written":0,"skipped":0}

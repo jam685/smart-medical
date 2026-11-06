@@ -64,13 +64,19 @@ CREATE TABLE IF NOT EXISTS sm_appointment (
     patient_id BIGINT NOT NULL COMMENT '患者ID',
     doctor_id BIGINT NOT NULL COMMENT '医生ID',
     department VARCHAR(50) COMMENT '科室',
+    schedule_id BIGINT COMMENT '号源ID（sm_schedule_slot.id，无号源的历史数据为空）',
+    queue_no INT COMMENT '时段内序号，即叫号顺序（1..N）',
+    slot_start DATETIME COMMENT '就诊时段开始时间（与 appointment_time 一致，冗余便于统计）',
     appointment_time TIMESTAMP COMMENT '挂号时间',
     status VARCHAR(20) DEFAULT 'PENDING' COMMENT 'PENDING/CONFIRMED/CANCELLED',
+    cancel_reason VARCHAR(30) COMMENT '取消原因：CANCEL患者取消/SUSPEND医生停诊退号/RESCHEDULE改约',
+    rescheduled_from BIGINT COMMENT '改约来源挂号单ID（由改约生成的新单有值）',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_patient (patient_id),
     INDEX idx_doctor (doctor_id),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_schedule (schedule_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 5. sm_visit 就诊进度表
@@ -353,4 +359,55 @@ CREATE TABLE IF NOT EXISTS sm_prescription_draft (
     INDEX idx_patient (patient_id),
     INDEX idx_doctor (doctor_id),
     INDEX idx_consult (consult_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 23. sm_schedule_slot 号源表（医生排班 × 时段，挂号并发控制的唯一真相）
+--     一行 = 某医生 × 某日期 × 某半小时时段；booked_count 只能通过带条件的 UPDATE 自增：
+--     UPDATE ... SET booked_count = booked_count + 1 WHERE id = ? AND status = 'OPEN' AND booked_count < total_count
+CREATE TABLE IF NOT EXISTS sm_schedule_slot (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    doctor_id BIGINT NOT NULL COMMENT '医生ID（sm_doctor.id）',
+    department VARCHAR(50) COMMENT '科室名（冗余，便于按科室筛号）',
+    work_date DATE NOT NULL COMMENT '出诊日期',
+    period VARCHAR(10) NOT NULL COMMENT '上下午：AM/PM',
+    start_time TIME NOT NULL COMMENT '时段开始（如 08:00）',
+    end_time TIME NOT NULL COMMENT '时段结束（如 08:30）',
+    total_count INT NOT NULL DEFAULT 5 COMMENT '总号数',
+    booked_count INT NOT NULL DEFAULT 0 COMMENT '已挂数量（并发扣减字段）',
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN' COMMENT 'OPEN可约/SUSPENDED停诊/CLOSED关闭',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_doctor_date_start (doctor_id, work_date, start_time),
+    KEY idx_date_dept (work_date, department),
+    KEY idx_doctor_date (doctor_id, work_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 24. sm_notification 站内信（停诊/改约等业务事件通知患者与医生）
+CREATE TABLE IF NOT EXISTS sm_notification (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    user_id BIGINT NOT NULL COMMENT '接收人ID（患者或医生）',
+    role VARCHAR(20) NOT NULL COMMENT '接收人角色：PATIENT/DOCTOR',
+    type VARCHAR(40) NOT NULL COMMENT '事件类型：SUSPEND_REFUND/SUSPEND_RESCHEDULE/SUSPEND_RESULT',
+    title VARCHAR(100) NOT NULL COMMENT '标题',
+    content VARCHAR(500) NOT NULL COMMENT '正文',
+    biz_type VARCHAR(30) COMMENT '业务类型：APPOINTMENT/SCHEDULE',
+    biz_id BIGINT COMMENT '业务ID',
+    read_flag TINYINT NOT NULL DEFAULT 0 COMMENT '0未读/1已读',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    KEY idx_user (user_id, role, read_flag, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 25. sm_suspend_request 医生停诊申请（医生发起 → 管理员审批）
+CREATE TABLE IF NOT EXISTS sm_suspend_request (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键',
+    doctor_id BIGINT NOT NULL COMMENT '申请医生ID',
+    slot_ids VARCHAR(500) NOT NULL COMMENT '号源ID JSON 数组，如 [12,13]',
+    reason VARCHAR(200) COMMENT '停诊原因',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/REJECTED',
+    admin_id BIGINT COMMENT '审批管理员ID',
+    review_note VARCHAR(200) COMMENT '审批意见',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '提交时间',
+    reviewed_at DATETIME NULL COMMENT '审批时间',
+    KEY idx_doctor (doctor_id),
+    KEY idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

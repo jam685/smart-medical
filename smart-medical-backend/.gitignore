@@ -1,0 +1,35 @@
+# 构建产物
+target/
+build/
+out/
+*.class
+
+# 本地密钥（绝不入版本库）
+ai-secret.yml
+*.secret.yml
+
+# 上传的用户文件（头像/报告/聊天图片，含个人隐私）
+uploads/
+
+# 日志与临时文件
+*.log
+logs/
+docs/app-run.log
+docs/app-run.err
+backend-restart.log
+
+# 解包残留
+BOOT-INF/
+META-INF/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# 系统
+.DS_Store
+Thumbs.db

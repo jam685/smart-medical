@@ -101,3 +101,19 @@ export function fetchAuditLogs(params = {}) {
 export function reviewAuditLog(id, decision) {
   return request.put(`/admin/audit-logs/${id}/review`, { decision })
 }
+
+/**
+ * 获取数据质量巡检历史快照（按时间倒序）。
+ * @returns {Promise<Array<{id, dataCount, labeledCount, missingRate, abnormalRate, updatedAt}>>}
+ */
+export function fetchDataQuality() {
+  return request.get('/admin/data-quality')
+}
+
+/**
+ * 手动触发一次数据质量巡检（立刻跑一遍 scheduler 逻辑，插入新快照）。
+ * @returns {Promise<object>} 刚插入的快照
+ */
+export function runDataQualityCheck() {
+  return request.post('/admin/data-quality/run')
+}

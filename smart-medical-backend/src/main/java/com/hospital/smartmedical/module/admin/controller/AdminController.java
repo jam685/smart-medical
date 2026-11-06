@@ -165,4 +165,9 @@ public class AdminController {
     public Result<Object> dataQuality() {
         return Result.ok(adminService.getDataQuality());
     }
+
+    @PostMapping("/data-quality/run")
+    public Result<Object> runDataQualityCheck() {
+        return Result.ok(adminService.runDataQualityCheck());
+    }
 }

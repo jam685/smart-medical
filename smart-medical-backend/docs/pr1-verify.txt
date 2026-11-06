@@ -1,0 +1,36 @@
+PR-1 验收记录（语义缓存：可观测 + 灰度）
+时间：2026-11-04 17:18—17:20
+服务：http://localhost:8080/api/smart-medical/v1（jar 重建于 17:1x，PID 126576）
+
+一、验证方式
+1) 登录患者 zhangsan（id=1）；
+2) 以 source=assistant 连续两次发送同一问题「感冒发烧应该注意什么」；
+3) 读取管理员统计接口 /admin/semantic-cache/stats。
+
+二、实测结果
+| 指标 | 第 1 次（未命中） | 第 2 次（命中） |
+|---|---|---|
+| cached | false | true |
+| cacheScore | 空 | 1.0 |
+| 耗时 | 5045 ms（路由 LLM + 生成 LLM 两次调用） | 2083 ms（仅向量化检索） |
+| 回复长度 | 82 字 | 82 字（与第 1 次完全一致） |
+| 是否跳过 LLM | 否 | 是（日志：命中返回，跳过 LLM） |
+
+三、统计接口返回值
+{"enabled":true,"shadow":false,"mode":"hit-return（命中返回）","sampleRate":100,
+ "threshold":0.92,"ttlDays":7,"collection":"sm_semantic_cache","storeReady":true,
+ "total":2,"hit":1,"hitRate":0.5,"returned":1,"returnedRate":0.5,
+ "savedChars":82,"estimatedSavedTokens":82,"expiredHits":0,"writeFailures":0,
+ "written":1,"skipped":0}
+
+四、服务端日志（关键片段）
+[语义缓存] 未命中：'感冒发烧应该注意什么'
+[语义缓存] 已沉淀问答：'感冒发烧应该注意什么'（ns=v2:qwen3.7-text-embedding，TTL=7天）
+[语义缓存] 命中返回（similarity=1.000，采样率 100%）：'感冒发烧应该注意什么'
+[语义缓存] 命中返回：similarity=1.000，跳过 LLM（sid=cs_e63dff3c246b）
+
+五、结论
+1) 命中返回闭环成立：cached/cacheScore 正确、统计分「命中 / 实际返回」两口径、节省字符数可观测；
+2) 灰度开关生效（启动日志写明采样率）；
+3) 遗留优化点：命中路径仍耗时约 2 秒，原因是每次都要调用向量模型把问题转成向量。
+   建议 PR-2 增加「问题向量短缓存」（key=归一化问题哈希），命中路径可降到 50 ms 以内。

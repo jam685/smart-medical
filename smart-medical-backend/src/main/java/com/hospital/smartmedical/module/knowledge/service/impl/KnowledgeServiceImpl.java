@@ -1,7 +1,9 @@
 package com.hospital.smartmedical.module.knowledge.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.hospital.smartmedical.module.ai.agent.rag.ClinicalRagService;
 import com.hospital.smartmedical.module.ai.agent.rag.DoctorRagService;
+import com.hospital.smartmedical.module.ai.agent.rag.FaqRagService;
 import com.hospital.smartmedical.module.knowledge.entity.KnowledgeChunk;
 import com.hospital.smartmedical.module.knowledge.entity.KnowledgeDocument;
 import com.hospital.smartmedical.module.knowledge.entity.MedicalKnowledgeBase;
@@ -38,6 +40,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     private final VectorIndexMapper vectorIndexMapper;
     /** 科室介绍库 RAG 服务（数据变更后触发热更新重建向量索引） */
     private final DoctorRagService doctorRagService;
+    /** 临床指南库 RAG 服务（数据变更后触发热更新，全量重建内存索引） */
+    private final ClinicalRagService clinicalRagService;
+    /** FAQ 常见问题库 RAG 服务（数据变更后触发热更新） */
+    private final FaqRagService faqRagService;
 
     /** 知识库列表（KB-01）。 */
     @Override
@@ -56,6 +62,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         base.setUpdatedAt(LocalDateTime.now());
         baseMapper.insert(base);
         doctorRagService.rebuild();
+        clinicalRagService.rebuild();
+        faqRagService.rebuild();
         return base;
     }
 
@@ -66,6 +74,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         base.setUpdatedAt(LocalDateTime.now());
         baseMapper.updateById(base);
         doctorRagService.rebuild();
+        clinicalRagService.rebuild();
+        faqRagService.rebuild();
     }
 
     /** 删除知识库（级联删除其下文档、片段与向量索引记录），删除后触发 RAG 热更新。 */
@@ -79,6 +89,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         }
         baseMapper.deleteById(id);
         doctorRagService.rebuild();
+        clinicalRagService.rebuild();
+        faqRagService.rebuild();
     }
 
     /** 知识文档列表（KB-03）。 */
@@ -109,6 +121,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         document.setUpdatedAt(LocalDateTime.now());
         documentMapper.updateById(document);
         doctorRagService.rebuildDocument(id);
+        clinicalRagService.rebuild();
+        faqRagService.rebuild();
     }
 
     /** 删除知识文档（级联删除其下片段与向量索引记录），删除后移除该文档向量。 */
@@ -117,6 +131,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
     public void deleteDocument(Long id) {
         deleteDocumentInternal(id);
         doctorRagService.removeDocument(id);
+        clinicalRagService.rebuild();
+        faqRagService.rebuild();
     }
 
     /**
@@ -154,6 +170,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         chunkMapper.insert(chunk);
         refreshDocChunkInfo(chunk.getDocumentId());
         doctorRagService.rebuildDocument(chunk.getDocumentId());
+        clinicalRagService.rebuild();
+        faqRagService.rebuild();
         return chunk;
     }
 
@@ -166,6 +184,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         chunkMapper.updateById(chunk);
         refreshDocChunkInfo(chunk.getDocumentId());
         doctorRagService.rebuildDocument(chunk.getDocumentId());
+        clinicalRagService.rebuild();
+        faqRagService.rebuild();
     }
 
     /** 删除知识片段（同步删除其向量索引记录），刷新文档片段数，并按所属文档局部重建向量索引。 */
@@ -181,6 +201,8 @@ public class KnowledgeServiceImpl implements KnowledgeService {
         chunkMapper.deleteById(id);
         refreshDocChunkInfo(chunk.getDocumentId());
         doctorRagService.rebuildDocument(chunk.getDocumentId());
+        clinicalRagService.rebuild();
+        faqRagService.rebuild();
     }
 
     /**

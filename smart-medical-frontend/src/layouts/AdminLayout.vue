@@ -13,6 +13,7 @@ import {
   Monitor,
   Warning,
   ChatLineRound,
+  Calendar,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -30,6 +31,7 @@ const menus = [
   { path: '/admin/prompt-templates', title: '提示词模板', icon: Tickets },
   { path: '/admin/model-configs', title: '模型配置', icon: Cpu },
   { path: '/admin/data-quality', title: '数据质量', icon: Monitor },
+  { path: '/admin/schedules', title: '排班管理', icon: Calendar },
   { path: '/admin/sensitive-review', title: '敏感审核', icon: Warning },
   { path: '/admin/online-consults', title: '问诊监控', icon: ChatLineRound },
 ]

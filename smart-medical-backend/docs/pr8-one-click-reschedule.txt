@@ -1,0 +1,41 @@
+PR-8 一键改约（改约并停诊）验收记录
+时间：2026-11-05 22:45—23:20
+范围：停诊影响面 → 选择目标时段 → 批量改约 → 自动停诊源时段
+
+一、交付内容
+1. 接口：POST /admin/schedules/reschedule
+   入参 { fromSlotIds:[...], toSlotId, appointmentIds:[...]（可空=全部） }
+   出参 { rescheduled, suspended, toSlotId, toDate, toStartTime, toEndTime }
+2. 事务与顺序（同一事务，任何一步失败整批回滚）
+   ① 校验目标时段：存在、OPEN、未过截单、不在源时段里、余号 >= 待迁人数；
+   ② 逐单：取消原挂号(cancel_reason=RESCHEDULE) → 回补源号源 → 按目标号源重新下单
+      （收回/扣号复用 createAppointmentBySlot，序号按目标时段重新分配）；
+   ③ 源时段改用 suspendIfEmpty 条件更新：只有 booked_count=0 才置停诊，
+      条件不成立说明期间有人抢号 → 抛错整批回滚，不会出现"人走了、号还挂着"。
+3. 前端（排班管理 → 停诊影响面弹窗）
+   - 新增"选择改约目标"：同医生最近可约时段，余号不足的置灰不可选；
+   - 默认选中第一个余号够用的时段；提示语随选择切换为"将为 N 位患者改约…"；
+   - 两个动作："仅退号并停诊" 与 "改约并停诊"，后者需要选中目标时段。
+
+二、验证
+1. mvn -o test：Tests run: 63, Failures: 0, Errors: 0 —— BUILD SUCCESS
+   新增 ScheduleRescheduleTest 4 个用例：
+   - 批量迁移成功（退 2 单、建 2 单、停诊 1 段）；
+   - 目标余号不足时拒绝，且不产生任何取消/新建；
+   - 源时段被并发占用（suspendIfEmpty 返回 0）时抛错回滚；
+   - 目标时段不能是待停诊时段。
+2. HTTP 实测（李医生 2026-11-06 09:00 → 10:00，患者张三）
+   - 影响面：affectedCount=1，挂号单 62；
+   - 改约返回：{rescheduled:1, suspended:1, toDate:"2026-11-06", toStartTime:"10:00"}；
+   - 号源：09:00 SUSPENDED / booked=0，10:00 OPEN / booked=1；
+   - 数据库：原单 62 → CANCELLED + cancel_reason=RESCHEDULE；新单 66 → PENDING + queue_no=1；
+   - 恢复源时段后 09:00 回到 OPEN，可继续放号。
+3. 浏览器实测（Edge headless）
+   - 10:00 时段的停诊弹窗展示患者张三与 5 个候选目标；
+   - 选中 09:30 后提示变为"将为 1 位患者改约到所选时段，并停诊原时段"；
+   - console 错误 0。
+
+三、遗留
+- 目标时段目前只列"同医生"，跨医生/跨科室改约接口已支持（toSlotId 任意），缺 UI；
+- 多位患者超过单时段余号时，需要拆分到多个目标时段（当前要求一次性装下）；
+- 改约通知仍走"复制通知清单"，未接短信/站内信。

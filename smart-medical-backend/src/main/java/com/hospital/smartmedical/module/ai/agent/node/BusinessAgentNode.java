@@ -2,6 +2,8 @@ package com.hospital.smartmedical.module.ai.agent.node;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hospital.smartmedical.module.ai.agent.enums.IntentKeywords;
+import com.hospital.smartmedical.module.ai.agent.enums.ReplySource;
 import com.hospital.smartmedical.module.ai.agent.llm.LlmClientService;
 import com.hospital.smartmedical.module.ai.agent.llm.PromptTemplateLoader;
 import com.hospital.smartmedical.module.ai.agent.state.ChatMessage;
@@ -41,9 +43,8 @@ public class BusinessAgentNode implements NodeAction<AgentState> {
     /** Jackson JSON 解析（LLM 意图 JSON 输出解析） */
     private final ObjectMapper objectMapper;
 
-    /** 合法意图枚举集合（LLM 输出校验用） */
-    private static final Set<String> VALID_INTENTS = Set.of(
-            "APPOINT", "PROGRESS", "PRESCRIPTION_REPORT", "DOCTOR_PATIENTS", "DOCTOR_PROGRESS", "UNKNOWN");
+    /** 合法意图枚举集合（与路由共用同一份，避免两处枚举漂移） */
+    private static final Set<String> VALID_INTENTS = IntentKeywords.VALID_INTENTS;
 
     /** 时间格式化 */
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -72,6 +73,8 @@ public class BusinessAgentNode implements NodeAction<AgentState> {
             reply = polishReply(g, intent, reply);
             g.setReply(reply);
             g.setReplyDraft(reply);
+            // 标记来源：业务回复含实时号源/列表，语义缓存必须拒绝（见 MedicalGraphState.replySource）
+            g.setReplySource(ReplySource.BUSINESS);
             // 业务查询结果直接展示，不落草稿表（hasNewDraft=false）
             g.setHasNewDraft(false);
             // 追加 AI 消息到对话历史（携带本轮卡片，重新打开会话时前端据此渲染）

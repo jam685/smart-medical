@@ -1,0 +1,37 @@
+Redis 故障降级验证记录
+时间：2026-11-05 13:07—13:09
+服务：http://localhost:8080/api/smart-medical/v1（PID 148776，验证时冷却参数设为 10 秒；代码默认 30 秒）
+
+一、问题
+Redis 停止后，RedisAiStateStore.get/save 抛 RedisConnectionFailureException，
+冒泡到 GlobalExceptionHandler → /ai/patient-chat 返回 {"code":500,"message":"服务器内部错误"}，
+整个 AI 对话不可用。
+
+二、方案
+新增 ResilientAiStateStore（AiStateStore 装饰器）：Redis 为主、内存兜底、失败后熔断冷却。
+- 正常：行为与直接使用 Redis 完全一致；
+- 失败：记录并进入冷却期（默认 30 秒），期间直接走内存，不再尝试 Redis；
+- 冷却结束：自动重试 Redis，成功则打印"已恢复"并切回；
+- 兜底存储自身异常：记录日志并返回空会话，保证不抛 500。
+
+装配：AiStateStoreFallbackConfig 在 ai.state-store=redis 时注册 @Primary Bean。
+
+三、端到端验证（docker stop redis → 调用 → docker start redis → 再调用）
+| 场景 | 结果 | 耗时 |
+|---|---|---|
+| A 基线（Redis 正常） | HTTP 200，code=0 | 5349 ms |
+| B Redis 停机后第 1 次 | HTTP 200，code=0（降级内存） | 13907 ms |
+| C 停机后第 2 次（冷却期内） | HTTP 200，code=0（不再尝试 Redis） | 8158 ms |
+| D Redis 恢复后 | HTTP 200，code=0（命中缓存） | 34 ms |
+
+四、服务端日志（关键片段）
+13:07:55 WARN  ResilientAiStateStore: 会话存储（Redis）不可用，降级为内存存储 10 秒：op=get，原因=Redis command timed out
+13:08:21 INFO  lettuce: Reconnected to localhost/6379
+13:08:24 INFO  ResilientAiStateStore: 会话存储（Redis）已恢复，切回 Redis
+
+五、结论
+1) Redis 故障不再导致 500，请求降级为内存会话继续服务；
+2) 熔断冷却生效：冷却期内不再尝试 Redis，避免每个请求都等连接超时；
+3) 恢复自动探测：冷却结束后首个请求成功即切回 Redis；
+4) 已知残留：降级期间语义缓存的 Redis 操作仍各自等待 5 秒命令超时（B/C 耗时 8–14 秒），
+   建议后续给 SemanticCacheService 也加共享熔断，或把 spring.data.redis.timeout 调小。

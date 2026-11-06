@@ -39,13 +39,15 @@ public interface OnlineConsultService {
     /**
      * 患者发起线上问诊（OC-01）——创建问诊记录，并将主诉/描述作为首条 PATIENT 消息写入问诊消息表。
      *
-     * @param patientId  患者 ID
-     * @param doctorId   接诊医生 ID
-     * @param department 科室
-     * @param content    主诉 / 病情描述（作为首条消息）
+     * @param patientId              患者 ID
+     * @param doctorId               接诊医生 ID
+     * @param department             科室
+     * @param content                主诉 / 病情描述（作为首条消息）
+     * @param preConsultSessionId    可选：关联的 AI 预问诊 sessionId（供医生端回溯预问诊摘要）
      * @return 新建的问诊记录
      */
-    OnlineConsultRecord createConsult(Long patientId, Long doctorId, String department, String content);
+    OnlineConsultRecord createConsult(Long patientId, Long doctorId, String department, String content,
+                                      String preConsultSessionId);
 
     /**
      * 分页查询问诊列表（OC-02）——按角色过滤：患者本人 / 医生本人 / 管理员全部。
