@@ -48,7 +48,6 @@ const doctorRoutes = {
     { path: 'appointments', name: 'DoctorAppointmentList', component: () => import('@/views/doctor/AppointmentList.vue') },
     { path: 'online-consults', name: 'DoctorConsultList', component: () => import('@/views/doctor/ConsultList.vue') },
     { path: 'online-consults/:id', name: 'DoctorConsultHandle', component: () => import('@/views/doctor/ConsultHandle.vue') },
-    { path: 'ai-analysis', name: 'DoctorAiAnalysis', component: () => import('@/views/doctor/AiAnalysis.vue') },
     { path: 'schedule', name: 'DoctorSchedule', component: () => import('@/views/doctor/Schedule.vue') },
   ]
 }
@@ -62,7 +61,6 @@ const adminRoutes = {
     { path: '', redirect: '/admin/home' },
     { path: 'home', name: 'AdminIndex', component: () => import('@/views/admin/Index.vue') },
     { path: 'users', name: 'AdminUserList', component: () => import('@/views/admin/UserList.vue') },
-    { path: 'roles', name: 'AdminRoleList', component: () => import('@/views/admin/RoleList.vue') },
     { path: 'audit-logs', name: 'AdminAuditLogList', component: () => import('@/views/admin/AuditLogList.vue') },
     { path: 'audit-logs/:id', name: 'AdminAuditLogDetail', component: () => import('@/views/admin/AuditLogDetail.vue') },
     { path: 'knowledge-base', name: 'AdminKnowledgeBase', component: () => import('@/views/admin/KnowledgeBase.vue') },
@@ -70,7 +68,6 @@ const adminRoutes = {
     { path: 'model-configs', name: 'AdminModelConfig', component: () => import('@/views/admin/ModelConfig.vue') },
     { path: 'data-quality', name: 'AdminDataQuality', component: () => import('@/views/admin/DataQuality.vue') },
     { path: 'schedules', name: 'AdminScheduleManage', component: () => import('@/views/admin/ScheduleManage.vue') },
-    { path: 'sensitive-review', name: 'AdminSensitiveReview', component: () => import('@/views/admin/SensitiveReview.vue') },
     { path: 'online-consults', name: 'AdminConsultMonitor', component: () => import('@/views/admin/ConsultMonitor.vue') },
     { path: 'online-consults/:id', name: 'AdminConsultMonitorDetail', component: () => import('@/views/admin/ConsultMonitorDetail.vue') },
   ]

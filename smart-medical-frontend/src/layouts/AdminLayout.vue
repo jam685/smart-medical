@@ -6,12 +6,10 @@ import AppLogo from '@/components/AppLogo.vue'
 import {
   Setting,
   User,
-  Lock,
   Tickets,
   Notebook,
   Cpu,
   Monitor,
-  Warning,
   ChatLineRound,
   Calendar,
 } from '@element-plus/icons-vue'
@@ -25,14 +23,12 @@ const activeMenu = computed(() => route.path)
 const menus = [
   { path: '/admin/home', title: '管理首页', icon: Setting },
   { path: '/admin/users', title: '用户管理', icon: User },
-  { path: '/admin/roles', title: '角色权限', icon: Lock },
   { path: '/admin/audit-logs', title: '审计日志', icon: Tickets },
   { path: '/admin/knowledge-base', title: '知识库', icon: Notebook },
   { path: '/admin/prompt-templates', title: '提示词模板', icon: Tickets },
   { path: '/admin/model-configs', title: '模型配置', icon: Cpu },
   { path: '/admin/data-quality', title: '数据质量', icon: Monitor },
   { path: '/admin/schedules', title: '排班管理', icon: Calendar },
-  { path: '/admin/sensitive-review', title: '敏感审核', icon: Warning },
   { path: '/admin/online-consults', title: '问诊监控', icon: ChatLineRound },
 ]
 

@@ -117,3 +117,20 @@ export function fetchDataQuality() {
 export function runDataQualityCheck() {
   return request.post('/admin/data-quality/run')
 }
+
+/**
+ * 管理员视角：问诊列表（全局，按状态/科室筛选，分页）
+ * @param {object} [params] {page, size, status, department}
+ * @returns {Promise<object>} {total, list, page, size}
+ */
+export function fetchAdminConsults(params = {}) {
+  return request.get('/admin/online-consults', { params })
+}
+
+/**
+ * 管理员视角：问诊统计卡片
+ * @returns {Promise<object>} {total, pending, replied, closed, todayCount, slowCount}
+ */
+export function fetchAdminConsultStats() {
+  return request.get('/admin/online-consults/stats')
+}

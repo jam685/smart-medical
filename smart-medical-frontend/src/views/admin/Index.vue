@@ -6,11 +6,7 @@
         <h1>欢迎，<span class="highlight">{{ userName }}</span> 管理员 👋</h1>
         <p>今天是 {{ today }}，系统运行正常 · {{ pendingWorkSummary }}</p>
         <div class="wb-actions">
-          <button class="btn-primary" @click="$router.push('/admin/sensitive-review')">
-            <svg viewBox="0 0 16 16"><path d="M8 2l6 3v5c0 3.5-2.6 5.6-6 6.6C4.6 15.6 2 13.5 2 10V5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M5.5 8.5l2 2 3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-            敏感内容审核
-          </button>
-          <button class="btn-ghost" @click="$router.push('/admin/audit-logs')">
+          <button class="btn-primary" @click="$router.push('/admin/audit-logs')">
             <svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M5 7h6M5 10h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
             审计日志
           </button>
@@ -160,10 +156,6 @@
           <div class="quick-item" @click="$router.push('/admin/data-quality')">
             <svg viewBox="0 0 32 32"><rect x="5" y="8" width="22" height="18" rx="3" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.8"/><path d="M10 14l3 3 5-5M10 20h12" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
             <span>数据质量</span>
-          </div>
-          <div class="quick-item" @click="$router.push('/admin/sensitive-review')">
-            <svg viewBox="0 0 32 32"><path d="M16 4l9 4v6c0 6-4 10-9 12-5-2-9-6-9-12V8z" fill="#FDECEC" stroke="#E53935" stroke-width="1.8" stroke-linejoin="round"/><path d="M11 15l3 3 6-7" stroke="#E53935" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span>敏感审核</span>
           </div>
         </div>
       </div>

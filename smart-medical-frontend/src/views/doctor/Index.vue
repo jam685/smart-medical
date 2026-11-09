@@ -163,10 +163,7 @@
             <svg viewBox="0 0 32 32"><rect x="6" y="5" width="20" height="22" rx="3" fill="#F0ECFE" stroke="#7A5AF8" stroke-width="1.8"/><path d="M11 11h10M11 16h10M11 21h6" stroke="#7A5AF8" stroke-width="1.8" stroke-linecap="round"/></svg>
             <span>病历管理</span>
           </div>
-          <div class="quick-item" @click="$router.push('/doctor/ai-analysis')">
-            <svg viewBox="0 0 32 32"><rect x="5" y="6" width="22" height="22" rx="4" fill="#FDECEC" stroke="#E53935" stroke-width="1.8"/><circle cx="16" cy="16" r="5" fill="none" stroke="#E53935" stroke-width="2"/><path d="M14 14l4 4M18 14l-4 4" stroke="#E53935" stroke-width="2" stroke-linecap="round"/></svg>
-            <span>AI 分析</span>
-          </div>
+
         </div>
       </div>
     </div>

@@ -9,7 +9,6 @@ import {
   Monitor,
   User,
   ChatDotSquare,
-  DataAnalysis,
   Calendar,
 } from '@element-plus/icons-vue'
 
@@ -23,7 +22,6 @@ const menus = [
   { path: '/doctor/home', title: '工作台', icon: Monitor },
   { path: '/doctor/appointments', title: '接诊管理', icon: User },
   { path: '/doctor/online-consults', title: '问诊处理', icon: ChatDotSquare },
-  { path: '/doctor/ai-analysis', title: 'AI 辅助分析', icon: DataAnalysis },
   { path: '/doctor/schedule', title: '我的排班', icon: Calendar },
 ]
 
