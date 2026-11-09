@@ -1,0 +1,55 @@
+# Promtail v3.0.0 — 采集 smart-medical 后端日志
+# 简化配置：file_sd_configs 自动发现日志文件
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: D:\smart-medical\observability\promtail-data\positions.yaml
+
+clients:
+  - url: http://127.0.0.1:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 10240
+
+scrape_configs:
+  # 文本日志（当前后端默认 profile 输出的）
+  - job_name: smart-medical-backend
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: smart-medical-backend
+          env: local
+          __path__: D:\smart-medical\smart-medical-backend\logs\smart-medical.log
+    pipeline_stages:
+      - regex:
+          expression: 'traceId=(?P<traceId>[^ ]+).*?level=(?P<level>[A-Z]+) userId=(?P<userId>[^ ]*) role=(?P<role>[^ ]*)'
+      - labels:
+          traceId:
+          level:
+          userId:
+          role:
+
+  # JSON 日志（prod profile 时生效）
+  - job_name: smart-medical-backend-json
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: smart-medical-backend-json
+          env: local
+          __path__: D:\smart-medical\smart-medical-backend\logs\smart-medical*.json.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            traceId: traceId
+            userId: userId
+            role: role
+      - labels:
+          level:
+          traceId:
+          userId:
+          role:

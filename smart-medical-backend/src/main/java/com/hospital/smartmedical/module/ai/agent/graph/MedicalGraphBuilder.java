@@ -143,17 +143,25 @@ public class MedicalGraphBuilder {
         String intent = resolveIntent(g);
         boolean business = isBusinessIntentName(intent) && intentAllowed(g, intent);
         // AI 客服会话与预问诊完全隔离：非业务意图（含 FAQ / UNKNOWN）一律走客服对话节点
+        String routeTo;
         if (g.isAssistantSession()) {
-            return business ? KEY_BUSINESS : KEY_ASSISTANT_DIALOG;
+            routeTo = business ? KEY_BUSINESS : KEY_ASSISTANT_DIALOG;
+        } else {
+            ConsultStage stage = g.getCurrentStage() == null ? ConsultStage.PRE_CONSULT : g.getCurrentStage();
+            switch (stage) {
+                case DOCTOR_RECEIVE:
+                    routeTo = business ? KEY_BUSINESS : KEY_DOCTOR_ASSIST;
+                    break;
+                case PRE_CONSULT:
+                default:
+                    routeTo = business ? KEY_BUSINESS : KEY_PATIENT_DIALOG;
+                    break;
+            }
         }
-        ConsultStage stage = g.getCurrentStage() == null ? ConsultStage.PRE_CONSULT : g.getCurrentStage();
-        switch (stage) {
-            case DOCTOR_RECEIVE:
-                return business ? KEY_BUSINESS : KEY_DOCTOR_ASSIST;
-            case PRE_CONSULT:
-            default:
-                return business ? KEY_BUSINESS : KEY_PATIENT_DIALOG;
-        }
+        // ===== 埋点：路由决策 =====
+        log.info("[路由] stage={} role={} assistant={} businessIntent={} routeTo={} llmIntent={}",
+                g.getCurrentStage(), g.getRole(), g.isAssistantSession(), business, routeTo, g.getRouteIntent());
+        return routeTo;
     }
 
     /**

@@ -115,5 +115,5 @@ export default { components: { ArrowDown } }
 .bell-wrap { margin-right: 18px; }
 .user-info { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .name { font-size: 14px; color: #374151; }
-.content { flex: 1; overflow: auto; background: #F5F7FA; }
+.content { flex: 1; overflow: auto; background: var(--app-window-bg); }
 </style>

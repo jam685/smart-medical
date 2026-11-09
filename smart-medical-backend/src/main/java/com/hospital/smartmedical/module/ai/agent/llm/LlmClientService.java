@@ -99,22 +99,37 @@ public class LlmClientService {
      * 真实模式：有 onToken 走 StreamingChatModel 增量回调，无则同步调用。
      */
     private String doChat(String systemPrompt, String userContent, List<String> imageUrls, Consumer<String> onToken) {
+        long llmStart = System.nanoTime();
         String content = userContent;
         if (imageUrls != null && !imageUrls.isEmpty()) {
             content = content + "\n[本次上传图片 " + imageUrls.size() + " 张，地址：" + String.join("、", imageUrls) + "]";
         }
-        if (mockMode) {
-            String reply = mockReply(content);
-            if (onToken != null) {
-                streamMockText(reply, onToken);
+        String reply = null;
+        try {
+            if (mockMode) {
+                reply = mockReply(content);
+                if (onToken != null) {
+                    streamMockText(reply, onToken);
+                }
+            } else {
+                String prompt = systemPrompt + "\n\n[用户内容]\n" + content;
+                if (onToken != null) {
+                    reply = streamReal(prompt, onToken);
+                } else {
+                    reply = callReal(prompt);
+                }
             }
-            return reply;
+        } finally {
+            long llmCostMs = (System.nanoTime() - llmStart) / 1_000_000;
+            String modelTag = mockMode ? "mock" : "llm";
+            boolean streaming = onToken != null;
+            log.info("[LLM] model={} streaming={} promptLen={} replyLen={} costMs={}",
+                    modelTag, streaming,
+                    content == null ? 0 : content.length(),
+                    reply == null ? 0 : reply.length(),
+                    llmCostMs);
         }
-        String prompt = systemPrompt + "\n\n[用户内容]\n" + content;
-        if (onToken != null) {
-            return streamReal(prompt, onToken);
-        }
-        return callReal(prompt);
+        return reply;
     }
 
     /**

@@ -30,6 +30,13 @@ ai-secret.yml
 .DS_Store
 Thumbs.db
 
+# 可观测性：二进制与运行时数据不入库（下载方式见 observability/README.md）
+observability/*.exe
+observability/*.zip
+observability/*.tar.gz
+observability/*-data/
+observability/grafana-data/
+
 # 本地工具产物（智能体工作目录、沙箱修复脚本、解包出的 Spring Boot 目录）
 .dsh-work/
 .acl-recovery/

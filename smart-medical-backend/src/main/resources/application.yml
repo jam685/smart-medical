@@ -5,8 +5,10 @@ server:
 
 spring:
   # 本地密钥文件（不入版本库）：api-key 等敏感配置放运行目录下 ai-secret.yml
+  # 注意：file: 是相对"进程工作目录"解析的，optional: 缺失时静默跳过（不报错，只会表现为 jwt.secret 为空）。
+  # 因此这里同时尝试两个位置：后端模块目录（IDE 运行目录正确时）与仓库根目录（IDE 以项目根为工作目录时）。
   config:
-    import: optional:file:./ai-secret.yml
+    import: optional:file:./ai-secret.yml,optional:file:./smart-medical-backend/ai-secret.yml
   application:
     name: smart-medical
   datasource:
@@ -122,3 +124,17 @@ ai:
 # Sensitive words
 sensitive:
   words: 政治,暴力,自杀,枪支,炸药,违禁药,色情,毒品
+
+# Actuator：健康检查 + metrics（生产可观测性基础）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized    # 未授权只看 UP/DOWN，授权看 Milvus/Redis/MySQL 明细
+
+# Logging：显式指定 logback-spring.xml（Spring Boot 默认也会识别，显式更保险）
+logging:
+  config: classpath:logback-spring.xml

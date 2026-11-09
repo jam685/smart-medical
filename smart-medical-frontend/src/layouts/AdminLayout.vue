@@ -119,5 +119,5 @@ export default { components: { ArrowDown } }
 .breadcrumb { font-size: 16px; font-weight: 500; color: #111827; }
 .user-info { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .name { font-size: 14px; color: #374151; }
-.content { flex: 1; overflow: auto; background: #F5F7FA; }
+.content { flex: 1; overflow: auto; background: var(--app-window-bg); }
 </style>

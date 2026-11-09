@@ -89,6 +89,7 @@ public class BusinessToolExecutor {
      * @return 结构化结果 Map：intent/reply/success/action/appointmentId/data/error
      */
     public Map<String, Object> execute(MedicalGraphState g, String intent) {
+        long toolStart = System.nanoTime();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("intent", intent);
         result.put("success", false);
@@ -137,6 +138,10 @@ public class BusinessToolExecutor {
             result.put("reply", "系统开小差了，请稍后再试。（错误编号 " + traceId + "）");
             result.put("error", Map.of("type", "SYS", "traceId", traceId, "detail", e.getMessage()));
         }
+        // ===== 埋点：业务工具执行 =====
+        long toolMs = (System.nanoTime() - toolStart) / 1_000_000;
+        log.info("[业务工具] intent={} action={} success={} costMs={}",
+                intent, result.get("action"), result.get("success"), toolMs);
         return result;
     }
 

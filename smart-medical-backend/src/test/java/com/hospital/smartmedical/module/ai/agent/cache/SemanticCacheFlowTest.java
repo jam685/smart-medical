@@ -64,7 +64,7 @@ class SemanticCacheFlowTest {
         when(rag.embeddingModelName()).thenReturn("test-model");
         when(rag.embedText(anyString())).thenReturn(EMB);
 
-        service = new SemanticCacheService(rag, null, redis.template, new ObjectMapper());
+        service = new SemanticCacheService(rag, null, redis.template, new ObjectMapper(), (Runnable r) -> r.run());
         ReflectionTestUtils.setField(service, "enabled", true);
         ReflectionTestUtils.setField(service, "shadow", false);
         ReflectionTestUtils.setField(service, "threshold", 0.92);

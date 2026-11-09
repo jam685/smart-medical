@@ -1,0 +1,134 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "🔴 错误日志（最近 50 条）",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "{job=\"smart-medical-backend\", level=~\"ERROR|WARN\"} |= ``",
+          "refId": "A",
+          "maxLines": 50,
+          "datasource": { "type": "loki", "uid": "loki-default" }
+        }
+      ],
+      "datasource": { "type": "loki", "uid": "loki-default" }
+    },
+    {
+      "title": "⏱ 慢请求（REQUEST DONE costMs > 3000）",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "{job=\"smart-medical-backend\"} |= `REQUEST DONE` | costMs > 3000",
+          "refId": "A",
+          "maxLines": 30,
+          "datasource": { "type": "loki", "uid": "loki-default" }
+        }
+      ],
+      "datasource": { "type": "loki", "uid": "loki-default" }
+    },
+    {
+      "title": "🤖 LLM 调用耗时（[LLM] costMs）",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "{job=\"smart-medical-backend\"} |= `[LLM]`",
+          "refId": "A",
+          "maxLines": 50,
+          "datasource": { "type": "loki", "uid": "loki-default" }
+        }
+      ],
+      "datasource": { "type": "loki", "uid": "loki-default" }
+    },
+    {
+      "title": "📍 问诊全链路（>>> 问诊入口 / <<< 问诊出口）",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "{job=\"smart-medical-backend\"} |~ `(>>> 问诊|<<< 问诊|\\[路由\\]|\\[业务工具\\])`",
+          "refId": "A",
+          "maxLines": 50,
+          "datasource": { "type": "loki", "uid": "loki-default" }
+        }
+      ],
+      "datasource": { "type": "loki", "uid": "loki-default" }
+    },
+    {
+      "title": "📈 日志量级（按 level 分组）",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "sum by (level) (count_over_time({job=\"smart-medical-backend\"} | json | __error__=\"\" [1m]))",
+          "refId": "A",
+          "legendFormat": "{{level}}",
+          "datasource": { "type": "loki", "uid": "loki-default" }
+        }
+      ],
+      "datasource": { "type": "loki", "uid": "loki-default" }
+    },
+    {
+      "title": "👥 活跃用户日志量（按 userId 分组）",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "expr": "topk(5, sum by (userId) (count_over_time({job=\"smart-medical-backend\"} | userId!=\"\" [5m])))",
+          "refId": "A",
+          "legendFormat": "user {{userId}}",
+          "datasource": { "type": "loki", "uid": "loki-default" }
+        }
+      ],
+      "datasource": { "type": "loki", "uid": "loki-default" }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["smart-medical"],
+  "templating": {
+    "list": [
+      {
+        "name": "traceId",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "loki-default" },
+        "query": "label_values({job=\"smart-medical-backend\"}, traceId)",
+        "refresh": 2,
+        "sort": "desc",
+        "includeAll": false,
+        "multi": false,
+        "options": [],
+        "current": {}
+      },
+      {
+        "name": "userId",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "loki-default" },
+        "query": "label_values({job=\"smart-medical-backend\"}, userId)",
+        "refresh": 2,
+        "sort": "desc",
+        "includeAll": true,
+        "multi": true,
+        "options": [],
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["10s", "30s", "1m", "5m"]
+  },
+  "timezone": "browser",
+  "title": "Smart-Medical 可观测性总览",
+  "uid": "smart-medical-main",
+  "version": 1
+}

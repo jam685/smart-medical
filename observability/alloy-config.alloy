@@ -1,0 +1,33 @@
+# Grafana Alloy：替代 promtail，采集 smart-medical 后端日志推送到 Loki
+# 语法和 promtail 配置不同，用 River DSL
+
+# ---------- 全局 ----------
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+# ---------- Loki 客户端 ----------
+loki.write "local" {
+  endpoint {
+    url = "http://localhost:3100/loki/api/v1/push"
+  }
+}
+
+# ---------- 文件发现 ----------
+discovery.file "smart-medical" {
+  path_targets = [{
+    __path__ = "D:\\smart-medical\\smart-medical-backend\\logs\\smart-medical*.json.log"
+    job      = "smart-medical-backend"
+    env      = "local"
+  }]
+}
+
+# ---------- 日志处理流水线 ----------
+loki.source.file "smart-medical" {
+  targets    = discovery.file.smart-medical.targets
+  forward_to = [loki.write.local.receiver]
+
+  # 防止文件滚动时重复读
+  tail_from_end = true
+}

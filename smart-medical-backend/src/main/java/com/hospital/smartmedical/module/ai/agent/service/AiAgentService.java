@@ -3,6 +3,7 @@ package com.hospital.smartmedical.module.ai.agent.service;
 import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.exception.BizException;
 import com.hospital.smartmedical.common.result.ErrorCode;
+import com.hospital.smartmedical.common.util.MaskUtils;
 import com.hospital.smartmedical.module.ai.agent.cache.SemanticCacheService;
 import com.hospital.smartmedical.module.ai.agent.enums.ConsultStage;
 import com.hospital.smartmedical.module.ai.agent.enums.ReplySource;
@@ -20,6 +21,7 @@ import com.hospital.smartmedical.module.preconsult.mapper.PreConsultMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bsc.langgraph4j.state.AgentState;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -32,6 +34,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /**
@@ -51,6 +54,10 @@ public class AiAgentService {
     private final DoctorMapper doctorMapper;
     private final SemanticCacheService semanticCacheService;
     private final PreConsultMapper preConsultMapper;
+
+    /** 异步线程池（带 TaskDecorator 让 runAsync 也带 MDC traceId） */
+    @Qualifier("taskExecutor")
+    private final Executor taskExecutor;
 
     /** 时间格式化 */
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -109,6 +116,12 @@ public class AiAgentService {
         String sid = (sessionId == null || sessionId.isBlank())
                 ? prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 12)
                 : sessionId;
+        // ===== 埋点：问诊入口 =====
+        long totalStart = System.nanoTime();
+        log.info(">>> 问诊入口 sid={} role={} source={} contentLen={} content={}",
+                sid, role, source == null ? "" : source,
+                content == null ? 0 : content.length(),
+                MaskUtils.truncate(content, 50));
         // 2) 加载或创建会话 State（会话隔离 + 归属校验，防会话 IDOR 横向越权）
         Optional<MedicalGraphState> existing = stateStore.get(sid);
         MedicalGraphState g;
@@ -230,7 +243,7 @@ public class AiAgentService {
                 } catch (Exception e) {
                     log.warn("语义缓存写入异常（已忽略，不影响主流程）：{}", e.getMessage());
                 }
-            });
+            }, taskExecutor);
         }
         // 7) 组装返回
         Map<String, Object> result = new LinkedHashMap<>();
@@ -248,6 +261,15 @@ public class AiAgentService {
         result.put("cacheScore", cacheHit ? Math.round(cacheProbe.score() * 1000) / 1000.0 : null);
         // 结构化卡片（挂号成功时前端渲染挂号信息小卡片，其他场景为 null）
         result.put("card", resolveCard(g));
+        // ===== 埋点：问诊出口 =====
+        long totalMs = (System.nanoTime() - totalStart) / 1_000_000;
+        log.info("<<< 问诊出口 sid={} replyLen={} totalCostMs={} cacheHit={} replySource={} stage={}",
+                sid,
+                g.getReply() == null ? 0 : g.getReply().length(),
+                totalMs,
+                cacheHit,
+                g.getReplySource(),
+                g.getCurrentStage());
         return result;
         } finally {
             // 8) 清理流式回调注册（图流转结束/异常均执行，防止注册表泄漏；非流式请求 onToken 为 null 无影响）

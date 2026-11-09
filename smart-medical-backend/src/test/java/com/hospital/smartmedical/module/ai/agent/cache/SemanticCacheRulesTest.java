@@ -23,7 +23,7 @@ class SemanticCacheRulesTest {
     @BeforeEach
     void setUp() {
         // 依赖只在链路测试里使用，纯规则测试传 null 即可
-        service = new SemanticCacheService(null, null, null, new ObjectMapper());
+        service = new SemanticCacheService(null, null, null, new ObjectMapper(), (Runnable r) -> r.run());
         ReflectionTestUtils.setField(service, "enabled", true);
         ReflectionTestUtils.setField(service, "shadow", false);
         ReflectionTestUtils.setField(service, "sampleRate", 100);

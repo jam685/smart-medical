@@ -42,6 +42,9 @@
   --ai-color: #7A5AF8;
   --ai-color-light: #B4A3FB;
   --ai-color-dark: #5A3BD8;
+
+  /* 窗口默认底色（页面画布） */
+  --app-window-bg: #FFFFFF;
 }
 
 /* ============ 品牌字体 ============ */
@@ -60,7 +63,7 @@ html, body {
     'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #F5F7FA;
+  background-color: var(--app-window-bg);
   color: #1F2937;
 }
 

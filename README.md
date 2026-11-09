@@ -20,6 +20,7 @@
 - [数据库与迁移脚本](#数据库与迁移脚本)
 - [默认账号](#默认账号)
 - [测试与构建](#测试与构建)
+- [可观测性](#可观测性全链路日志追踪)
 - [常见问题](#常见问题)
 - [路线图](#路线图)
 - [免责声明](#免责声明)
@@ -359,6 +360,35 @@ npm run build
 ```
 
 已覆盖的测试包括：JWT 生成与校验、鉴权拦截器角色控制、并发扣减号源、预约改期、排班影响面、语义缓存规则与流程、AI 意图路由等。
+
+---
+
+## 可观测性（全链路日志追踪）
+
+每个 HTTP 请求都会分配一个 `traceId`，贯穿过滤器 → 鉴权 → 业务 → AI 图流转 → 异步线程，日志里可以直接按它把整条链路捞出来。
+
+| 组件 | 作用 |
+| --- | --- |
+| `TraceIdFilter` | 从请求头 `X-Trace-Id` 续接或新生成，写入 MDC，并回写响应头 |
+| `AuthInterceptor` | JWT 校验通过后把 `userId` / `role` 回填 MDC |
+| `AsyncConfig`（TaskDecorator） | 异步线程池自动继承 MDC，避免 SSE / `runAsync` 丢 traceId |
+| `ResponseBodyTraceAdvice` | 把 `traceId` 自动填进统一返回体的 `Result.traceId` |
+| `MaskUtils` | 日志脱敏（手机号、身份证等） |
+| `logback-spring.xml` | dev 彩色控制台 + 文件；prod 额外输出 JSON 行，30 天滚动 |
+
+日志里统一带这几个字段：
+
+```
+traceId=3f9a1c2b userId=12 role=PATIENT session=cs_889
+```
+
+前端在请求失败时会把 traceId 显示在错误提示里（如 `服务器错误，请稍后重试  [编号: 3f9a1c2b]`），用户报障时直接给这个号即可定位。
+
+本地可视化（Loki + Promtail + Grafana）见 [observability/README.md](observability/README.md)，按 `traceId` 查询：
+
+```logql
+{job="smart-medical-backend"} |= "traceId=3f9a1c2b"
+```
 
 ---
 

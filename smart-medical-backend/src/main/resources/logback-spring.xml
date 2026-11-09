@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- ====== 公共变量 ====== -->
+    <property name="LOG_PATH" value="${LOG_PATH:-${user.dir}/logs}"/>
+    <property name="APP_NAME" value="smart-medical"/>
+
+    <!--
+        MDC 键位（统一引用 TraceIdFilter 的常量）：
+          traceId  — 请求身份证号（必填）
+          userId   — 登录用户（AuthInterceptor 验完 JWT 后回填，空串=白名单请求）
+          role     — PATIENT / DOCTOR / ADMIN（空串=白名单请求）
+          username — 用户名
+          sessionId — 前端问诊传的会话 ID（非必填）
+        %X{key}:- 表示取值，取不到就用后面的冒号兜底（避免空值日志里出现 null）
+    -->
+
+    <!-- ====== Dev 环境：控制台彩色 + 简洁文件 ====== -->
+    <springProfile name="dev | default">
+        <!-- 控制台：彩色 + 关键链路字段 -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level traceId=%X{traceId}:%d - %logger{36} - %msg%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <!-- 文件：按天滚动 + 14 天 + 异步 -->
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/${APP_NAME}.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+                <maxFileSize>50MB</maxFileSize>
+                <maxHistory>14</maxHistory>
+                <totalSizeCap>2GB</totalSizeCap>
+            </rollingPolicy>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level traceId=%X{traceId} userId=%X{userId} role=%X{role} session=%X{sessionId} - %logger{36} - %msg%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <!-- 异步包装：业务线程不阻塞磁盘 IO -->
+        <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+            <queueSize>512</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <appender-ref ref="FILE"/>
+        </appender>
+
+        <!-- Root logger（dev 默认 INFO） -->
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+        </root>
+
+        <!-- AI 模块 DEBUG 方便调试（LangGraph 路由/意图识别/RAG 检索） -->
+        <logger name="com.hospital.smartmedical.module.ai" level="DEBUG"/>
+    </springProfile>
+
+    <!-- ====== Prod 环境：JSON 结构化 + 更长保留 + 控制台 INFO ====== -->
+    <springProfile name="prod">
+        <!-- 控制台：简洁 INFO（prod 机器上可能被 journald / Docker 日志捕获，不要太吵） -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level traceId=%X{traceId} userId=%X{userId} - %logger{36} - %msg%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <!-- 普通文本文件：按天滚动 + 30 天 + 5GB -->
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/${APP_NAME}.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+                <maxFileSize>50MB</maxFileSize>
+                <maxHistory>30</maxHistory>
+                <totalSizeCap>5GB</totalSizeCap>
+            </rollingPolicy>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level traceId=%X{traceId} userId=%X{userId} role=%X{role} session=%X{sessionId} - %logger{36} - %msg%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <!-- JSON 文件：一条一行，ELK / Loki / Splunk 直接 ingest -->
+        <appender name="JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_PATH}/${APP_NAME}.json.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/${APP_NAME}.json.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+                <maxFileSize>50MB</maxFileSize>
+                <maxHistory>14</maxHistory>
+            </rollingPolicy>
+            <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+                <layout class="ch.qos.logback.classic.PatternLayout">
+                    <pattern>{"ts":"%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX}","level":"%level","thread":"%thread","traceId":"%X{traceId}","userId":"%X{userId}","role":"%X{role}","sessionId":"%X{sessionId}","logger":"%logger{36}","msg":"%replace(%replace(%msg){'\\','\\\\'}{'"','\\\"'}"%n</pattern>
+                </layout>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <!-- 异步包装（两个 Appender 各一层，互不干扰） -->
+        <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+            <queueSize>1024</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <appender-ref ref="FILE"/>
+        </appender>
+        <appender name="ASYNC_JSON" class="ch.qos.logback.classic.AsyncAppender">
+            <queueSize>1024</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+            <appender-ref ref="JSON"/>
+        </appender>
+
+        <!-- Root logger（prod 默认 WARN，业务 INFO 单独 logger 开） -->
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+            <appender-ref ref="ASYNC_JSON"/>
+        </root>
+
+        <!-- 业务 INFO 级别（AI 模块 INFO 足够，生产不看 DEBUG） -->
+        <logger name="com.hospital.smartmedical" level="INFO" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_FILE"/>
+            <appender-ref ref="ASYNC_JSON"/>
+        </logger>
+    </springProfile>
+
+</configuration>

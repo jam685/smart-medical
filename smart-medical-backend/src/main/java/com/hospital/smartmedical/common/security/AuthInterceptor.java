@@ -4,11 +4,13 @@ import com.hospital.smartmedical.common.enums.Role;
 import com.hospital.smartmedical.common.result.ErrorCode;
 import com.hospital.smartmedical.common.result.Result;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hospital.smartmedical.common.trace.TraceIdFilter;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
@@ -104,6 +106,12 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         Role role = jwtUtil.role(claims);
         Long userId = jwtUtil.userId(claims);
+        String username = jwtUtil.username(claims);
+
+        // ===== 回填 MDC（TraceIdFilter 先注入空串占位，这里验完 JWT 拿到真实值覆盖） =====
+        MDC.put(TraceIdFilter.MDC_USER_ID,   userId == null ? "" : String.valueOf(userId));
+        MDC.put(TraceIdFilter.MDC_ROLE,      role == null ? "" : role.name());
+        MDC.put(TraceIdFilter.MDC_USERNAME,  username == null ? "" : username);
 
         // 角色规则校验：命中规则才校验；未命中表示任意已登录角色可访问
         Set<Role> allowedRoles = matchAllowedRoles(path);
@@ -155,6 +163,9 @@ public class AuthInterceptor implements HandlerInterceptor {
     private void writeError(HttpServletResponse res, ErrorCode err) throws Exception {
         res.setStatus(200);
         res.setContentType("application/json;charset=UTF-8");
-        res.getWriter().write(objectMapper.writeValueAsString(Result.fail(err)));
+        Result<Void> r = Result.fail(err);
+        // 直接写 response.getWriter() 绕过了 ResponseBodyAdvice，这里手动塞 traceId
+        r.setTraceId(MDC.get(TraceIdFilter.MDC_TRACE_ID));
+        res.getWriter().write(objectMapper.writeValueAsString(r));
     }
 }

@@ -17,6 +17,7 @@ import dev.langchain4j.store.embedding.milvus.MilvusEmbeddingStore;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -167,6 +169,10 @@ public class SemanticCacheService {
     /** JSON 序列化（答案载荷） */
     private final ObjectMapper objectMapper;
 
+    /** 异步线程池（带 TaskDecorator 让 runAsync 也带 MDC traceId） */
+    @Qualifier("taskExecutor")
+    private final Executor taskExecutor;
+
     @Value("${ai.semantic-cache.enabled:true}")
     private boolean enabled;
 
@@ -274,7 +280,7 @@ public class SemanticCacheService {
                 .build();
         log.info("语义缓存已启用：{}，阈值 {}，分类 TTL 流程 {} 天 / 常识 {} 天，集合 {}，问题向量缓存容量 {}，强制免责声明={}",
                 mode, threshold, flowTtlDays, commonTtlDays, collection, QUERY_CACHE_SIZE, requireDisclaimer);
-        CompletableFuture.runAsync(this::initStore)
+        CompletableFuture.runAsync(this::initStore, taskExecutor)
                 .exceptionally(ex -> {
                     log.warn("语义缓存向量库初始化异常：{}", ex.getMessage());
                     return null;
@@ -581,7 +587,7 @@ public class SemanticCacheService {
             } catch (Exception e) {
                 log.warn("[语义缓存] 陈旧向量清理失败（vectorId={}）：{}", vectorId, e.getMessage());
             }
-        });
+        }, taskExecutor);
     }
 
     /**
