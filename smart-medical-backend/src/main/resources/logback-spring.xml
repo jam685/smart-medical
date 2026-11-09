@@ -20,7 +20,7 @@
         <!-- 控制台：彩色 + 关键链路字段 -->
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level traceId=%X{traceId}:%d - %logger{36} - %msg%n</pattern>
+                <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level traceId=%X{traceId} userId=%X{userId} - %logger{36} - %msg%n</pattern>
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
@@ -28,8 +28,8 @@
         <!-- 文件：按天滚动 + 14 天 + 异步 -->
         <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${LOG_PATH}/${APP_NAME}.log</file>
-            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-                <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
                 <maxFileSize>50MB</maxFileSize>
                 <maxHistory>14</maxHistory>
                 <totalSizeCap>2GB</totalSizeCap>
@@ -70,7 +70,7 @@
         <!-- 普通文本文件：按天滚动 + 30 天 + 5GB -->
         <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${LOG_PATH}/${APP_NAME}.log</file>
-            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
                 <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
                 <maxFileSize>50MB</maxFileSize>
                 <maxHistory>30</maxHistory>
@@ -85,16 +85,24 @@
         <!-- JSON 文件：一条一行，ELK / Loki / Splunk 直接 ingest -->
         <appender name="JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${LOG_PATH}/${APP_NAME}.json.log</file>
-            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-                <fileNamePattern>${LOG_PATH}/${APP_NAME}.json.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_PATH}/${APP_NAME}.json.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
                 <maxFileSize>50MB</maxFileSize>
                 <maxHistory>14</maxHistory>
+                <totalSizeCap>2GB</totalSizeCap>
             </rollingPolicy>
-            <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
-                <layout class="ch.qos.logback.classic.PatternLayout">
-                    <pattern>{"ts":"%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX}","level":"%level","thread":"%thread","traceId":"%X{traceId}","userId":"%X{userId}","role":"%X{role}","sessionId":"%X{sessionId}","logger":"%logger{36}","msg":"%replace(%replace(%msg){'\\','\\\\'}{'"','\\\"'}"%n</pattern>
-                </layout>
-                <charset>UTF-8</charset>
+            <!-- 结构化 JSON：引号/反斜杠/换行转义由 LogstashEncoder 负责，保证一条一行、可直接被 Loki/ELK 解析 -->
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <timeZone>Asia/Shanghai</timeZone>
+                <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</timestampPattern>
+                <fieldNames>
+                    <timestamp>ts</timestamp>
+                    <message>msg</message>
+                    <levelValue>[ignore]</levelValue>
+                </fieldNames>
+                <includeMdc>true</includeMdc>
+                <includeContext>false</includeContext>
+                <customFields>{"app":"smart-medical"}</customFields>
             </encoder>
         </appender>
 

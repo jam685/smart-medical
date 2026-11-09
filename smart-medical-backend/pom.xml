@@ -26,6 +26,8 @@
         <!-- AI 多智能体：LangGraph4j 状态图编排 + LangChain4j 大模型调用 -->
         <langgraph4j.version>1.9.6</langgraph4j.version>
         <langchain4j.version>1.22.0</langchain4j.version>
+        <!-- 结构化 JSON 日志编码器（转义交给库，避免手写 pattern 产出非法 JSON） -->
+        <logstash-logback.version>8.1</logstash-logback.version>
     </properties>
 
     <!-- 依赖版本统一管理（BOM） -->
@@ -156,6 +158,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- 结构化 JSON 日志：logback 的 LogstashEncoder（自动处理引号/反斜杠转义） -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>${logstash-logback.version}</version>
         </dependency>
     </dependencies>
 

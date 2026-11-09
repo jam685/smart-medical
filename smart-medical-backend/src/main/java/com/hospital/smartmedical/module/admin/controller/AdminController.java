@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
@@ -210,7 +211,36 @@ public class AdminController {
         Page<OnlineConsultRecord> pageParam = new Page<>(page, size);
         Page<OnlineConsultRecord> result = consultMapper.selectPage(pageParam, qw);
 
-        List<Map<String, Object>> records = result.getRecords().stream().map(rec -> {
+        // 批量取患者名 / 医生名 / 消息数：一页 N 条只查 3 次，避免逐条 selectById 的 N+1
+        List<OnlineConsultRecord> rows = result.getRecords();
+        Set<Long> patientIds = rows.stream().map(OnlineConsultRecord::getPatientId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> doctorIds = rows.stream().map(OnlineConsultRecord::getDoctorId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toSet());
+        List<Long> consultIds = rows.stream().map(OnlineConsultRecord::getId)
+                .filter(java.util.Objects::nonNull).collect(Collectors.toList());
+
+        Map<Long, String> patientNames = new HashMap<>();
+        if (!patientIds.isEmpty()) {
+            patientMapper.selectBatchIds(patientIds)
+                    .forEach(p -> patientNames.put(p.getId(), p.getRealName()));
+        }
+        Map<Long, String> doctorNames = new HashMap<>();
+        if (!doctorIds.isEmpty()) {
+            doctorMapper.selectBatchIds(doctorIds)
+                    .forEach(d -> doctorNames.put(d.getId(), d.getRealName()));
+        }
+        // 消息数：只查 consult_id 一列，在内存里按问诊聚合
+        Map<Long, Long> messageCounts = new HashMap<>();
+        if (!consultIds.isEmpty()) {
+            consultMessageMapper.selectList(
+                            new QueryWrapper<com.hospital.smartmedical.module.onlineconsult.entity.ConsultMessage>()
+                                    .select("consult_id")
+                                    .in("consult_id", consultIds))
+                    .forEach(m -> messageCounts.merge(m.getConsultId(), 1L, Long::sum));
+        }
+
+        List<Map<String, Object>> records = rows.stream().map(rec -> {
             Map<String, Object> row = new HashMap<>();
             row.put("id", rec.getId());
             row.put("patientId", rec.getPatientId());
@@ -220,18 +250,12 @@ public class AdminController {
             row.put("startTime", rec.getStartTime());
             row.put("endTime", rec.getEndTime());
 
-            // join 患者名
-            var p = patientMapper.selectById(rec.getPatientId());
-            row.put("patientName", p != null ? p.getRealName() : "?");
-            // join 医生名
-            var d = doctorMapper.selectById(rec.getDoctorId());
-            row.put("doctorName", d != null ? d.getRealName() : "?");
+            // 患者名 / 医生名：来自上面的批量查询
+            row.put("patientName", patientNames.getOrDefault(rec.getPatientId(), "?"));
+            row.put("doctorName", doctorNames.getOrDefault(rec.getDoctorId(), "?"));
 
-            // 消息数（快速统计）
-            Long msgCount = consultMessageMapper.selectCount(
-                    new QueryWrapper<com.hospital.smartmedical.module.onlineconsult.entity.ConsultMessage>()
-                            .eq("consult_id", rec.getId()));
-            row.put("messageCount", msgCount);
+            // 消息数：来自上面的批量聚合
+            row.put("messageCount", messageCounts.getOrDefault(rec.getId(), 0L));
 
             // 问诊时长：REPLIED 取 endTime，其他状态取 startTime→现在
             if (rec.getStartTime() != null) {
